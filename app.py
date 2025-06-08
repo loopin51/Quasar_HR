@@ -1,3 +1,9 @@
+from tab4_functions import perform_photometry
+from photutils.detection import DAOStarFinder
+from astropy.stats import sigma_clipped_stats
+import numpy as np
+from astropy.io import fits
+
 # Main application file for the Gradio Astro App
 import gradio as gr
 import os
@@ -428,18 +434,196 @@ def handle_upload_master_flats(uploaded_master_flats_list, current_master_flat_p
     return final_status, new_master_flat_paths, gr.Textbox(value=flat_paths_display_text, label="Uploaded Master FLAT Paths", visible=True, interactive=False)
 
 # Dummy handler for Tab 4 button (actual handler to be implemented in a later step)
-def handle_run_photometry_analysis_dummy(b_frame, v_frame, roi, k_val, std_fits, std_b, std_v):
-    print(f"Tab 4 dummy handler called with: B:{b_frame}, V:{v_frame}, ROI:{roi}, k:{k_val}, StdFITS:{std_fits}, Std_B:{std_b}, Std_V:{std_v}")
-    # Return empty/default values for all outputs
-    return "Photometry analysis triggered (dummy response).", None, None, None
+# Renamed handler for Tab 4
+def handle_tab4_photometry(
+    tab4_b_file_obj, tab4_v_file_obj,
+    tab4_std_star_file_obj, tab4_std_b_mag_str, tab4_std_v_mag_str,
+    tab4_roi_str, tab4_k_value_str,
+    master_bias_path_state, master_dark_paths_state, master_flat_paths_state, # States from Tab 1
+    request: gr.Request  # Added request: gr.Request type hint
+):
+    status_messages = ["Starting Tab 4 Photometry Analysis..."]
+    # Ensure all globally needed functions like load_fits_data, get_fits_header,
+    # save_fits_data, correct_light_frame are accessible (imported at module level in app.py)
+
+    if not tab4_b_file_obj or not tab4_v_file_obj:
+        status_messages.append("Error: Both B-filter and V-filter LIGHT frames must be uploaded.")
+        return "
+".join(status_messages), None, None, None # status, df, preview_img, csv_dl
+
+    # Ensure master_dark_paths_state and master_flat_paths_state are dictionaries
+    if master_dark_paths_state is None: master_dark_paths_state = {}
+    if master_flat_paths_state is None: master_flat_paths_state = {}
 
 
-with gr.Blocks() as astro_app:
-    gr.Markdown("# Astro App")
+    raw_b_path = tab4_b_file_obj.name
+    raw_v_path = tab4_v_file_obj.name
+    status_messages.append(f"B-frame: {os.path.basename(raw_b_path)}, V-frame: {os.path.basename(raw_v_path)}")
 
-    with gr.Tabs():
-        with gr.TabItem("Master Frame Generation (Tab 1)"):
-            master_bias_path_state = gr.State(None)
+    b_data_check = load_fits_data(raw_b_path) # Check data directly, not just assign
+    b_header = get_fits_header(raw_b_path)
+    v_data_check = load_fits_data(raw_v_path) # Check data directly
+    v_header = get_fits_header(raw_v_path)
+
+    if b_data_check is None or b_header is None:
+        status_messages.append(f"Error: Could not load B-filter frame or its header from {raw_b_path}.")
+        return "
+".join(status_messages), None, None, None
+    if v_data_check is None or v_header is None:
+        status_messages.append(f"Error: Could not load V-filter frame or its header from {raw_v_path}.")
+        return "
+".join(status_messages), None, None, None
+    status_messages.append("B and V LIGHT frames loaded successfully.")
+
+    if not master_bias_path_state or not os.path.exists(master_bias_path_state):
+        status_messages.append("Error: Master BIAS not found or path invalid. Please prepare/upload in Tab 1.")
+        return "
+".join(status_messages), None, None, None
+    master_bias_data = load_fits_data(master_bias_path_state)
+    if master_bias_data is None:
+        status_messages.append(f"Error: Failed to load Master BIAS from {master_bias_path_state}.")
+        return "
+".join(status_messages), None, None, None
+    status_messages.append(f"Master BIAS loaded (shape {master_bias_data.shape}).")
+
+    temp_dir = os.path.join("masters_output", "temp_final_flats_tab4")
+    calibrated_dir = os.path.join("calibrated_lights_output", "tab4_corrected")
+    os.makedirs(temp_dir, exist_ok=True)
+    os.makedirs(calibrated_dir, exist_ok=True)
+
+    corrected_b_path = None
+    try:
+        b_exptime_val = b_header.get('EXPTIME', b_header.get('EXPOSURE'))
+        b_filter_name = b_header.get('FILTER', b_header.get('FILTER1', b_header.get('FILTNAME')))
+        if b_exptime_val is None: raise ValueError("B-frame missing EXPTIME/EXPOSURE keyword.")
+        if b_filter_name is None: raise ValueError("B-frame missing FILTER/FILTER1/FILTNAME keyword.")
+
+        b_exptime_float = float(b_exptime_val)
+        b_filter_key = str(b_filter_name).strip().replace(" ", "_")
+
+        b_dark_exp_key = str(b_exptime_float).replace('.', 'p') + "s"
+        b_master_dark_path = master_dark_paths_state.get(b_dark_exp_key)
+        b_master_dark_data = None # Define before conditional assignment
+        if b_master_dark_path and os.path.exists(b_master_dark_path):
+            b_master_dark_data = load_fits_data(b_master_dark_path)
+            if b_master_dark_data is None: status_messages.append(f"Warning: Failed to load B-DARK from {b_master_dark_path} for exptime {b_exptime_float}s. Proceeding without dark correction for B-flat.")
+            else: status_messages.append(f"Using B-DARK {b_master_dark_path} for B-flat processing.")
+        else: status_messages.append(f"Warning: B-DARK for exp {b_exptime_float}s (key: {b_dark_exp_key}) not found in {list(master_dark_paths_state.keys())}. Proceeding without dark correction for B-flat.")
+
+        b_prelim_flat_path = master_flat_paths_state.get(b_filter_key)
+        path_to_final_b_flat = None
+        if b_prelim_flat_path and os.path.exists(b_prelim_flat_path):
+            b_prelim_flat_data = load_fits_data(b_prelim_flat_path)
+            if b_prelim_flat_data is not None:
+                if b_prelim_flat_data.shape != master_bias_data.shape: raise ValueError(f"B-PrelimFlat shape {b_prelim_flat_data.shape} mismatch with MasterBias {master_bias_data.shape}")
+                flat_temp1 = b_prelim_flat_data - master_bias_data
+                flat_temp2 = flat_temp1
+                if b_master_dark_data is not None:
+                    if flat_temp1.shape != b_master_dark_data.shape: raise ValueError(f"B-Flat(bias-sub) shape {flat_temp1.shape} mismatch with B-Dark {b_master_dark_data.shape}")
+                    flat_temp2 = flat_temp1 - b_master_dark_data
+
+                median_flat_temp2 = np.median(flat_temp2)
+                if median_flat_temp2 == 0: raise ValueError("Median of processed B-FLAT (after bias/dark) is zero.")
+                final_b_flat_data = flat_temp2 / median_flat_temp2
+
+                path_to_final_b_flat = os.path.join(temp_dir, f"final_B_flat_{b_filter_key}.fits")
+                # Try to get header from prelim flat, or create minimal one
+                temp_flat_header = get_fits_header(b_prelim_flat_path) if get_fits_header(b_prelim_flat_path) else fits.Header()
+                temp_flat_header['HISTORY'] = 'Generated final B-flat for Tab 4 (bias/dark subtracted, normalized)'
+                save_fits_data(path_to_final_b_flat, final_b_flat_data, header=temp_flat_header)
+                status_messages.append(f"Generated temporary final B-FLAT: {path_to_final_b_flat}")
+            else: status_messages.append(f"Warning: Failed to load Prelim B-FLAT from {b_prelim_flat_path}. B-frame will not be flat-fielded.")
+        else: status_messages.append(f"Warning: Prelim B-FLAT for filter '{b_filter_key}' not found in {list(master_flat_paths_state.keys())}. B-frame will not be flat-fielded.")
+
+        base_b_name = os.path.splitext(os.path.basename(raw_b_path))[0]
+        corrected_b_path_val = os.path.join(calibrated_dir, f"{base_b_name}_cal_B.fits")
+        # Use the specific master dark for this B-frame if available, otherwise None
+        actual_b_master_dark_for_light = b_master_dark_path if (b_master_dark_path and os.path.exists(b_master_dark_path)) else None
+        if correct_light_frame(raw_b_path, corrected_b_path_val, master_bias_path_state, actual_b_master_dark_for_light, path_to_final_b_flat):
+            status_messages.append(f"B-frame corrected: {corrected_b_path_val}")
+            corrected_b_path = corrected_b_path_val # Store path for later use
+        else: status_messages.append(f"Error: Failed to correct B-frame {raw_b_path}.")
+        # Clean up temp final B-flat
+        if path_to_final_b_flat and os.path.exists(path_to_final_b_flat):
+            try: os.remove(path_to_final_b_flat)
+            except Exception as e_rem_b: status_messages.append(f"Warning: Could not remove temp B-flat {path_to_final_b_flat}: {e_rem_b}")
+    except Exception as e: status_messages.append(f"Error during B-frame processing: {str(e)}")
+
+
+    corrected_v_path = None # Initialize for V-frame
+    try:
+        v_exptime_val = v_header.get('EXPTIME', v_header.get('EXPOSURE'))
+        v_filter_name = v_header.get('FILTER', v_header.get('FILTER1', v_header.get('FILTNAME')))
+        if v_exptime_val is None: raise ValueError("V-frame missing EXPTIME/EXPOSURE keyword.")
+        if v_filter_name is None: raise ValueError("V-frame missing FILTER/FILTER1/FILTNAME keyword.")
+
+        v_exptime_float = float(v_exptime_val)
+        v_filter_key = str(v_filter_name).strip().replace(" ", "_")
+        v_dark_exp_key = str(v_exptime_float).replace('.', 'p') + "s"
+        v_master_dark_path = master_dark_paths_state.get(v_dark_exp_key)
+        v_master_dark_data = None # Define before conditional assignment
+        if v_master_dark_path and os.path.exists(v_master_dark_path):
+            v_master_dark_data = load_fits_data(v_master_dark_path)
+            if v_master_dark_data is None: status_messages.append(f"Warning: Failed to load V-DARK from {v_master_dark_path} for exptime {v_exptime_float}s. Proceeding without dark correction for V-flat.")
+            else: status_messages.append(f"Using V-DARK {v_master_dark_path} for V-flat processing.")
+        else: status_messages.append(f"Warning: V-DARK for exp {v_exptime_float}s (key: {v_dark_exp_key}) not found in {list(master_dark_paths_state.keys())}. Proceeding without dark correction for V-flat.")
+
+        v_prelim_flat_path = master_flat_paths_state.get(v_filter_key)
+        path_to_final_v_flat = None # Initialize path
+        if v_prelim_flat_path and os.path.exists(v_prelim_flat_path):
+            v_prelim_flat_data = load_fits_data(v_prelim_flat_path)
+            if v_prelim_flat_data is not None:
+                if v_prelim_flat_data.shape != master_bias_data.shape: raise ValueError(f"V-PrelimFlat shape {v_prelim_flat_data.shape} mismatch with MasterBias {master_bias_data.shape}")
+                flat_temp1_v = v_prelim_flat_data - master_bias_data
+                flat_temp2_v = flat_temp1_v
+                if v_master_dark_data is not None:
+                    if flat_temp1_v.shape != v_master_dark_data.shape: raise ValueError(f"V-Flat(bias-sub) shape {flat_temp1_v.shape} mismatch with V-Dark {v_master_dark_data.shape}")
+                    flat_temp2_v = flat_temp1_v - v_master_dark_data
+
+                median_flat_temp2_v = np.median(flat_temp2_v)
+                if median_flat_temp2_v == 0: raise ValueError("Median of processed V-FLAT (after bias/dark) is zero.")
+                final_v_flat_data = flat_temp2_v / median_flat_temp2_v
+
+                path_to_final_v_flat = os.path.join(temp_dir, f"final_V_flat_{v_filter_key}.fits")
+                temp_flat_header_v = get_fits_header(v_prelim_flat_path) if get_fits_header(v_prelim_flat_path) else fits.Header()
+                temp_flat_header_v['HISTORY'] = 'Generated final V-flat for Tab 4 (bias/dark subtracted, normalized)'
+                save_fits_data(path_to_final_v_flat, final_v_flat_data, header=temp_flat_header_v)
+                status_messages.append(f"Generated temporary final V-FLAT: {path_to_final_v_flat}")
+            else: status_messages.append(f"Warning: Failed to load Prelim V-FLAT from {v_prelim_flat_path}. V-frame will not be flat-fielded.")
+        else: status_messages.append(f"Warning: Prelim V-FLAT for filter '{v_filter_key}' not found in {list(master_flat_paths_state.keys())}. V-frame will not be flat-fielded.")
+
+        base_v_name = os.path.splitext(os.path.basename(raw_v_path))[0]
+        corrected_v_path_val = os.path.join(calibrated_dir, f"{base_v_name}_cal_V.fits")
+        actual_v_master_dark_for_light = v_master_dark_path if (v_master_dark_path and os.path.exists(v_master_dark_path)) else None
+        if correct_light_frame(raw_v_path, corrected_v_path_val, master_bias_path_state, actual_v_master_dark_for_light, path_to_final_v_flat):
+            status_messages.append(f"V-frame corrected: {corrected_v_path_val}")
+            corrected_v_path = corrected_v_path_val # Store path for later use
+        else: status_messages.append(f"Error: Failed to correct V-frame {raw_v_path}.")
+        # Clean up temp final V-flat
+        if path_to_final_v_flat and os.path.exists(path_to_final_v_flat):
+            try: os.remove(path_to_final_v_flat)
+            except Exception as e_rem_v: status_messages.append(f"Warning: Could not remove temp V-flat {path_to_final_v_flat}: {e_rem_v}")
+    except Exception as e: status_messages.append(f"Error during V-frame processing: {str(e)}")
+
+    if not corrected_b_path or not corrected_v_path:
+        status_messages.append("One or both LIGHT frames failed to calibrate. Cannot proceed with photometry.")
+        return "
+".join(status_messages), None, None, None
+
+    status_messages.append("
+Photometry Part 1 (Calibration) finished. Corrected frames (if successful):")
+    status_messages.append(f"Corrected B: {corrected_b_path if corrected_b_path else 'N/A'}")
+    status_messages.append(f"Corrected V: {corrected_v_path if corrected_v_path else 'N/A'}")
+    status_messages.append("
+Source detection, photometry, and catalog matching not yet implemented in this part.")
+
+    # For now, return None for DataFrame, preview image, and CSV download path
+    # Preview could show the corrected B-frame if successful
+    preview_image_path = corrected_b_path # or None if it failed
+
+    return "
+".join(status_messages), None, preview_image_path, None
+
 master_dark_paths_state = gr.State({})
 master_flat_paths_state = gr.State({})
 
