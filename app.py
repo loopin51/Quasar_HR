@@ -210,15 +210,11 @@ def handle_generate_master_dark(dark_uploads_list, master_bias_path, current_mas
     except Exception as e_rmdir:
          print(f"Could not remove temp dir {temp_subtracted_dark_dir}: {e_rmdir}")
 
-    final_status = "
-".join(status_messages) if status_messages else "Processing completed."
+    final_status = "\n".join(status_messages) if status_messages else "Processing completed."
     if not new_master_dark_paths:
-        final_status += "
-No Master DARKs were successfully generated."
+        final_status += "\nNo Master DARKs were successfully generated."
 
-    dark_paths_display_text = "Generated Master DARKs:
-" + "
-".join([f"{exp}: {p}" for exp, p in new_master_dark_paths.items()])
+    dark_paths_display_text = "Generated Master DARKs:\n" + "\n".join([f"{exp}: {p}" for exp, p in new_master_dark_paths.items()])
     return final_status, new_master_dark_paths, gr.Textbox(value=dark_paths_display_text, label="Generated Master DARK Paths", visible=True, interactive=False)
 
 def handle_generate_master_flat(flat_uploads_list, current_master_flat_paths_state):
@@ -287,18 +283,14 @@ def handle_generate_master_flat(flat_uploads_list, current_master_flat_paths_sta
                 try: os.remove(output_master_flat_path)
                 except Exception: pass
 
-    final_status = "
-".join(status_messages) if status_messages else "Flat processing completed."
+    final_status = "\n".join(status_messages) if status_messages else "Flat processing completed."
     if not new_master_flat_paths and not status_messages: # If no groups or all groups failed silently before message
         final_status = "No Preliminary Master FLATs were successfully generated or no valid flats found."
     elif not new_master_flat_paths: # Some errors occurred, but no successes
-        final_status += "
-No Preliminary Master FLATs were successfully generated."
+        final_status += "\nNo Preliminary Master FLATs were successfully generated."
 
 
-    flat_paths_display_text = "Generated Preliminary Master FLATs:
-" + "
-".join([f"{filt}: {p}" for filt, p in new_master_flat_paths.items()])
+    flat_paths_display_text = "Generated Preliminary Master FLATs:\n" + "\n".join([f"{filt}: {p}" for filt, p in new_master_flat_paths.items()])
     return final_status, new_master_flat_paths, gr.Textbox(value=flat_paths_display_text, label="Generated Prelim. Master FLAT Paths", visible=True, interactive=False)
 
 def handle_upload_master_bias(uploaded_master_bias_file_obj, current_master_bias_path_state):
@@ -361,8 +353,7 @@ def handle_upload_master_darks(uploaded_master_darks_list, current_master_dark_p
             status_messages.append(error_msg)
             print(error_msg)
 
-    final_status = "
-".join(status_messages) if status_messages else "No files processed or error."
+    final_status = "\n".join(status_messages) if status_messages else "No files processed or error."
     if not new_master_dark_paths and not status_messages : # No files processed, no errors
         final_status = "No dark files were processed."
     elif not new_master_dark_paths and status_messages: # Only errors
@@ -371,9 +362,7 @@ def handle_upload_master_darks(uploaded_master_darks_list, current_master_dark_p
         final_status = "All dark files uploaded successfully."
 
 
-    dark_paths_display_text = "Uploaded/Updated Master DARKs:
-" + "
-".join([f"{exp}: {p}" for exp, p in new_master_dark_paths.items()])
+    dark_paths_display_text = "Uploaded/Updated Master DARKs:\n" + "\n".join([f"{exp}: {p}" for exp, p in new_master_dark_paths.items()])
     return final_status, new_master_dark_paths, gr.Textbox(value=dark_paths_display_text, label="Uploaded Master DARK Paths", visible=True, interactive=False)
 
 def handle_upload_master_flats(uploaded_master_flats_list, current_master_flat_paths_state):
@@ -413,8 +402,7 @@ def handle_upload_master_flats(uploaded_master_flats_list, current_master_flat_p
             status_messages.append(error_msg)
             print(error_msg)
 
-    final_status = "
-".join(status_messages) if status_messages else "No files processed or error."
+    final_status = "\n".join(status_messages) if status_messages else "No files processed or error."
     if not new_master_flat_paths and not status_messages :
         final_status = "No flat files were processed."
     elif not new_master_flat_paths and status_messages:
@@ -422,9 +410,7 @@ def handle_upload_master_flats(uploaded_master_flats_list, current_master_flat_p
     elif not status_messages and new_master_flat_paths :
         final_status = "All flat files uploaded successfully."
 
-    flat_paths_display_text = "Uploaded/Updated Master FLATs:
-" + "
-".join([f"{filt}: {p}" for filt, p in new_master_flat_paths.items()])
+    flat_paths_display_text = "Uploaded/Updated Master FLATs:\n" + "\n".join([f"{filt}: {p}" for filt, p in new_master_flat_paths.items()])
     return final_status, new_master_flat_paths, gr.Textbox(value=flat_paths_display_text, label="Uploaded Master FLAT Paths", visible=True, interactive=False)
 
 with gr.Blocks() as astro_app:
