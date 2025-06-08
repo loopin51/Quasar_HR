@@ -68,9 +68,10 @@ def create_master_frame(file_paths: list[str], output_path: str, method: str = "
         # This usually applies clipping along the stack axis (axis=0) for each pixel.
         # For direct application, astropy.stats.sigma_clip can be used then np.mean.
         # For simplicity, let's use a common approach:
-        mean, median_clipped, std_clipped = sigma_clipped_stats(image_stack, axis=0, sigma=3.0)
+        # Use stdfunc='mad_std' for robust standard deviation estimation against outliers
+        mean, median_clipped, std_clipped = sigma_clipped_stats(image_stack, axis=0, sigma=3.0, stdfunc='mad_std')
         master_image = mean # Using the mean of the sigma-clipped data
-        print(f"Sigma clipping applied. Original median: {np.median(image_stack, axis=0)[0,0]}, Clipped mean: {master_image[0,0]}")
+        print(f"Sigma clipping applied (stdfunc=mad_std). Original median: {np.median(image_stack, axis=0)[0,0]}, Clipped mean: {master_image[0,0]}")
     else:
         print(f"Error: Unknown combination method '{method}'. Supported methods are 'median', 'mean', 'sigma_clip_mean'.")
         return False

@@ -99,8 +99,9 @@ def perform_photometry(
                     sigma_clip_sky = SigmaClip(sigma=3.0, maxiters=5)
                     sky_stats = ApertureStats(image_data, current_sky_annulus, sigma_clip=sigma_clip_sky)
 
-                    if sky_stats.median is not None and len(sky_stats.median) > 0:
-                        sky_median_per_pixel = sky_stats.median[0] # ApertureStats returns array
+                    # sky_stats.median for a single aperture is a scalar, not an array
+                    if sky_stats.median is not None:
+                        sky_median_per_pixel = sky_stats.median
                         result['sky_median_per_pixel'] = sky_median_per_pixel
                         sky_sum_in_aperture = sky_median_per_pixel * ap_area
                         result['sky_sum_in_aperture'] = sky_sum_in_aperture

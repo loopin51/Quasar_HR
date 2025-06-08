@@ -100,8 +100,9 @@ def save_fits_data(filepath: str, data: np.ndarray, header: fits.Header = None) 
 
 def get_fits_header(filepath: str) -> fits.Header | None:
     """
-    Loads the header from the primary HDU of a FITS file.
-    If primary HDU header is empty or minimal, it tries common image extensions.
+    Loads the header from a FITS file.
+    It prioritizes headers from data-carrying HDUs (Primary, 'SCI', 'IMAGE').
+    If the primary HDU appears to be data-less (e.g., NAXIS=0), it prefers headers from known image extensions.
 
     Args:
         filepath: Path to the FITS file.
@@ -115,18 +116,24 @@ def get_fits_header(filepath: str) -> fits.Header | None:
     try:
         with fits.open(filepath) as hdul:
             primary_header = hdul[0].header
-            # Check if primary header is substantial enough or try alternatives
-            if len(primary_header) > 2: # Arbitrary check for more than just SIMPLE and BITPIX/NAXIS
-                return primary_header
-            else:
-                print(f"Primary HDU header in {filepath} is minimal. Trying common image extensions.")
+            primary_has_data_axes = primary_header.get('NAXIS', 0) > 0 and not (primary_header.get('NAXIS1', 0) == 0 and primary_header.get('NAXIS2', 0) == 0)
+
+            # If primary HDU seems to lack data axes, try common image extensions first
+            if not primary_has_data_axes or hdul[0].data is None:
+                print(f"Primary HDU in {filepath} appears data-less or NAXIS=0. Checking 'SCI', 'IMAGE' extensions first for header.")
                 for ext_name in ['SCI', 'IMAGE']:
                     if ext_name in hdul and hdul[ext_name].header is not None:
-                        print(f"Found header in extension '{ext_name}'.")
-                        return hdul[ext_name].header
-                # If no better header found, return the primary one anyway
-                return primary_header
-    except FileNotFoundError:
+                        # Check if this extension itself has data axes
+                        ext_header = hdul[ext_name].header
+                        if ext_header.get('NAXIS', 0) > 0 and not (ext_header.get('NAXIS1', 0) == 0 and ext_header.get('NAXIS2', 0) == 0):
+                            print(f"Found data-carrying header in extension '{ext_name}'.")
+                            return ext_header
+                print(f"No data-carrying header found in 'SCI' or 'IMAGE'. Falling back to primary HDU header for {filepath}.")
+
+            # Otherwise, or if fallback occurs, return the primary header.
+            return primary_header
+
+    except FileNotFoundError: # Should be caught by os.path.exists, but as a safeguard
         print(f"Error: File not found at {filepath}")
         return None
     except OSError as e:

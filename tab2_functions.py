@@ -3,6 +3,7 @@ import numpy as np
 from astropy.io import fits
 from utils import load_fits_data, save_fits_data, get_fits_header # Assuming utils.py is in PYTHONPATH
 import time
+import os # Import the os module
 
 def get_exposure_time(header: fits.Header) -> float | None:
     """
@@ -62,6 +63,9 @@ def correct_light_frame(
     corrected_data = raw_light_data.astype(np.float32, copy=True)
 
     history_entries = [f"LIGHT frame correction started: {time.strftime('%Y-%m-%dT%H:%M:%S UTC')}"]
+    bias_subtracted_flag = False
+    dark_subtracted_flag = False
+    flat_fielded_flag = False
 
     # 1. Bias Subtraction
     if master_bias_path:
@@ -77,6 +81,7 @@ def correct_light_frame(
             corrected_data -= master_bias_data.astype(np.float32)
             print("Master BIAS subtracted.")
             history_entries.append(f"Subtracted master BIAS: {master_bias_path}")
+            bias_subtracted_flag = True
 
     # 2. Dark Subtraction
     if master_dark_path:
@@ -94,26 +99,23 @@ def correct_light_frame(
             dark_exptime = get_exposure_time(master_dark_header)
 
             if light_exptime is not None and dark_exptime is not None and dark_exptime > 0:
-                if light_exptime == dark_exptime:
-                    scale_factor = 1.0
-                    print("LIGHT and master DARK exposure times are equal. No scaling needed.")
-                else:
-                    scale_factor = light_exptime / dark_exptime
-                    print(f"Scaling master DARK by factor {scale_factor:.3f} (Light exp: {light_exptime}s, Dark exp: {dark_exptime}s).")
-
-                # It's assumed master_dark_data is already bias-subtracted if it was made with a bias.
-                # Or it's a dark current frame.
+                scale_factor = light_exptime / dark_exptime
                 corrected_data -= (master_dark_data.astype(np.float32) * scale_factor)
-                print("Scaled master DARK subtracted.")
-                history_entries.append(f"Subtracted scaled master DARK: {master_dark_path} (Scale: {scale_factor:.3f})")
+                dark_subtracted_flag = True
+                if light_exptime == dark_exptime:
+                    print("Applied master DARK (unscaled, exposure times equal).")
+                    history_entries.append(f"Applied master DARK (unscaled, exp times equal): {master_dark_path}")
+                else:
+                    print(f"Applied scaled master DARK by factor {scale_factor:.3f} (Light exp: {light_exptime}s, Dark exp: {dark_exptime}s).")
+                    history_entries.append(f"Applied scaled master DARK: {master_dark_path} (Scale: {scale_factor:.3f})")
             elif light_exptime is None or dark_exptime is None:
-                print("Warning: Could not determine exposure times for LIGHT or master DARK. Subtracting DARK without scaling.")
+                print("Warning: Could not determine exposure times for LIGHT or master DARK. Applying DARK without scaling.")
                 corrected_data -= master_dark_data.astype(np.float32)
-                history_entries.append(f"Subtracted master DARK (unscaled): {master_dark_path} - Exposure times missing.")
+                history_entries.append(f"Applied master DARK (unscaled, exp times missing): {master_dark_path}")
+                dark_subtracted_flag = True
             elif dark_exptime <= 0:
                 print(f"Warning: Master DARK exposure time is zero or negative ({dark_exptime}s). Skipping DARK subtraction.")
                 history_entries.append(f"DARK subtraction skipped: Invalid exposure time for {master_dark_path}")
-
 
     # 3. Flat Fielding
     if master_flat_path:
@@ -126,33 +128,31 @@ def correct_light_frame(
             print(f"Warning: Master FLAT shape {master_flat_data.shape} differs from LIGHT frame shape {corrected_data.shape}. Skipping FLAT fielding.")
             history_entries.append(f"FLAT fielding skipped: Shape mismatch for {master_flat_path}")
         else:
-            # Normalize the master flat by its median (or mean, median is often more robust to outliers)
-            # Avoid division by zero or very small numbers. Add a small epsilon if median is close to zero.
             median_flat = np.median(master_flat_data)
-            if median_flat == 0: # Highly unlikely for a good flat, but handle it.
+            if median_flat == 0:
                 print("Warning: Median of master FLAT is zero. Skipping FLAT fielding to avoid division by zero.")
                 history_entries.append(f"FLAT fielding skipped: Median of {master_flat_path} is zero.")
             else:
                 normalized_flat = master_flat_data.astype(np.float32) / median_flat
-                # Handle potential zeros in the normalized flat itself to prevent division by zero in the image data
-                normalized_flat[normalized_flat == 0] = 1.0 # Replacing zeros with 1.0 means no change at those pixels
+                normalized_flat[normalized_flat == 0] = 1.0 # Avoid division by zero in image data
                 print(f"Master FLAT normalized by median value: {median_flat:.3f}")
-
                 corrected_data /= normalized_flat
                 print("Flat fielding applied.")
                 history_entries.append(f"Applied master FLAT: {master_flat_path} (Normalized by median: {median_flat:.3f})")
+                flat_fielded_flag = True
 
     # Update header
-    raw_light_header["BZERO"] = 0.0 # Common practice after calibration, data is actual values
+    raw_light_header["BZERO"] = 0.0
     raw_light_header["BSCALE"] = 1.0
     raw_light_header.set("DATAMIN", np.min(corrected_data), "Minimum pixel value in corrected data")
     raw_light_header.set("DATAMAX", np.max(corrected_data), "Maximum pixel value in corrected data")
     raw_light_header.add_comment("LIGHT frame processed by custom script.")
-    if master_bias_path:
+
+    if bias_subtracted_flag:
         raw_light_header["CAL_BIAS"] = (os.path.basename(master_bias_path), "Master BIAS used")
-    if master_dark_path:
+    if dark_subtracted_flag:
         raw_light_header["CAL_DARK"] = (os.path.basename(master_dark_path), "Master DARK used")
-    if master_flat_path:
+    if flat_fielded_flag:
         raw_light_header["CAL_FLAT"] = (os.path.basename(master_flat_path), "Master FLAT used")
 
     for entry in history_entries:

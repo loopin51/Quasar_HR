@@ -1,5 +1,6 @@
 # Main application file for the Gradio Astro App
 import gradio as gr
+from tab1_functions import * # Placeholder for specific imports
 from tab3_functions import calculate_extinction_coefficient
 
 def handle_extinction_calculation(airmass_str: str, magnitude_str: str) -> tuple[str, str, str, str]:
@@ -40,12 +41,82 @@ def handle_extinction_calculation(airmass_str: str, magnitude_str: str) -> tuple
     except Exception as e:
         return "", "", "", f"An unexpected error occurred: {str(e)}"
 
+# Dummy handlers for Tab 1 UI (will be replaced with actual logic)
+def handle_generate_master_bias(files):
+    if not files: return "No BIAS files uploaded. Cannot generate Master BIAS."
+    # Actual call to tab1_functions.create_master_frame will go here
+    # For now, using a generic name from the import *
+    # result = create_master_frame(file_paths=[f.name for f in files], output_path="temp_master_bias.fits", method="mean", frame_type="BIAS")
+    # return f"Master BIAS generation attempted. Result: {result}"
+    return f"Attempting to generate Master BIAS from {len(files)} file(s)... (UI Handler - Not fully implemented yet)"
+
+def handle_generate_master_dark(files):
+    if not files: return "No DARK files uploaded. Cannot generate Master DARKs."
+    return f"Attempting to generate Master DARKs from {len(files)} file(s)... (UI Handler - Not fully implemented yet)"
+
+def handle_generate_master_flat(files):
+    if not files: return "No FLAT files uploaded. Cannot generate Prelim. Master FLATs."
+    return f"Attempting to generate Prelim. Master FLATs from {len(files)} file(s)... (UI Handler - Not fully implemented yet)"
+
+def handle_upload_master_bias(file_obj):
+    if not file_obj: return "No Master BIAS file provided for upload."
+    # Session state or copy file to a known location would happen here.
+    return f"Master BIAS '{file_obj.name}' received for upload. (UI Handler - Not fully implemented yet)"
+
+def handle_upload_master_darks(files):
+    if not files: return "No Master DARK files provided for upload."
+    # Session state or copy files to a known location would happen here.
+    return f"Master DARKs received for upload: {[f.name for f in files]} (UI Handler - Not fully implemented yet)"
+
+def handle_upload_master_flats(files):
+    if not files: return "No Master FLAT files provided for upload."
+    # Session state or copy files to a known location would happen here.
+    return f"Master FLATs received for upload: {[f.name for f in files]} (UI Handler - Not fully implemented yet)"
+
+
+
 with gr.Blocks() as astro_app:
     gr.Markdown("# Astro App")
 
     with gr.Tabs():
         with gr.TabItem("Master Frame Generation (Tab 1)"):
-            gr.Markdown("Placeholder for Tab 1: Master Frame Generation")
+            gr.Markdown("## Create Master Calibration Frames or Upload Existing Ones")
+
+                        with gr.Row():
+                            with gr.Column(scale=2):
+                                gr.Markdown("### Option 1: Generate Master Frames from Raw Files")
+                                bias_uploads = gr.Files(label="Upload BIAS Frames (FITS)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab1_bias_uploads")
+                                dark_uploads = gr.Files(label="Upload DARK Frames (FITS)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab1_dark_uploads")
+                                flat_uploads = gr.Files(label="Upload FLAT Frames (FITS)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab1_flat_uploads")
+
+                                with gr.Row():
+                                    generate_master_bias_button = gr.Button("Generate Master BIAS", elem_id="tab1_gen_mbias_btn")
+                                    generate_master_dark_button = gr.Button("Generate Master DARKs", elem_id="tab1_gen_mdark_btn")
+                                    generate_master_flat_button = gr.Button("Generate Prelim. Master FLATs", elem_id="tab1_gen_mflat_btn")
+
+                            with gr.Column(scale=1):
+                                gr.Markdown("### Option 2: Upload Existing Master Frames")
+                                upload_master_bias = gr.File(label="Upload Master BIAS (FITS)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab1_upload_mbias")
+                                upload_master_darks = gr.Files(label="Upload Master DARKs (FITS, one per exposure)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab1_upload_mdarks")
+                                upload_master_flats = gr.Files(label="Upload Prelim. Master FLATs (FITS, one per filter)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab1_upload_mflats")
+
+                        gr.Markdown("### Processing Status & Results")
+                        tab1_status_display = gr.Textbox(label="Status", interactive=False, lines=5, elem_id="tab1_status_disp")
+
+                        with gr.Row():
+                            # These will be updated to be File components for download later
+                            download_master_bias_placeholder = gr.Markdown("Master BIAS download placeholder", elem_id="tab1_dl_mbias_ph") # Placeholder
+                            download_master_dark_placeholder = gr.Markdown("Master DARKs download placeholder", elem_id="tab1_dl_mdark_ph") # Placeholder
+                            download_master_flat_placeholder = gr.Markdown("Master FLATs download placeholder", elem_id="tab1_dl_mflat_ph") # Placeholder
+
+                        # Connect buttons to handlers
+                        generate_master_bias_button.click(fn=handle_generate_master_bias, inputs=[bias_uploads], outputs=[tab1_status_display])
+                        generate_master_dark_button.click(fn=handle_generate_master_dark, inputs=[dark_uploads], outputs=[tab1_status_display])
+                        generate_master_flat_button.click(fn=handle_generate_master_flat, inputs=[flat_uploads], outputs=[tab1_status_display])
+
+                        upload_master_bias.upload(fn=handle_upload_master_bias, inputs=[upload_master_bias], outputs=[tab1_status_display])
+                        upload_master_darks.upload(fn=handle_upload_master_darks, inputs=[upload_master_darks], outputs=[tab1_status_display])
+                        upload_master_flats.upload(fn=handle_upload_master_flats, inputs=[upload_master_flats], outputs=[tab1_status_display])
             # TODO: Add UI components for Tab 1
 
         with gr.TabItem("LIGHT Frame Correction (Tab 2)"):
