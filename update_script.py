@@ -1,51 +1,86 @@
-# Python script for the subtask - Tab 2 UI Replacement
+# Python script for subtask - Implement Tab 4 UI
 import re
 import os
 
 app_py_path = "app.py"
 
-# The UI code block for Tab 2, including the button click definition
-# Note: The state variables (master_bias_path_state, etc.) are defined in Tab 1's scope
-# but should be accessible here as they are part of the same gr.Blocks() instance.
-tab2_ui_replacement_code = """gr.Markdown("## Calibrate Raw LIGHT Frames")
+# UI code for Tab 4
+tab4_ui_code = """
+gr.Markdown("## Tab 4: Detailed Photometry and Catalog Analysis")
 
-            with gr.Row():
-                with gr.Column(scale=1):
-                    light_frame_uploads = gr.Files(label="Upload Raw LIGHT Frames (FITS)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab2_light_uploads")
-                    # Assuming master_bias_path_state, master_dark_paths_state, master_flat_paths_state are accessible
-                    # from the parent gr.Blocks() context where they are defined (in Tab 1).
-                    calibrate_lights_button = gr.Button("Calibrate Uploaded LIGHT Frames", elem_id="tab2_calibrate_btn")
+with gr.Row():
+    with gr.Column(scale=1):
+        gr.Markdown("### Input LIGHT Frames")
+        tab4_b_frame_upload = gr.File(label="Upload B-filter LIGHT Frame (FITS)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab4_b_upload")
+        tab4_v_frame_upload = gr.File(label="Upload V-filter LIGHT Frame (FITS)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab4_v_upload")
 
-                with gr.Column(scale=2):
-                    tab2_status_display = gr.Textbox(label="Calibration Status", interactive=False, lines=10, elem_id="tab2_status_disp") # Increased lines
+        gr.Markdown("### Region of Interest (ROI)")
+        tab4_roi_input = gr.Textbox(label="ROI (center_x, center_y, radius_pixels)", placeholder="e.g., 512,512,100 or leave blank for full image", elem_id="tab4_roi")
 
-            gr.Markdown("### Calibrated Image Preview") # Singular for now
-            # Output for a single image preview (e.g., the first calibrated image)
-            calibrated_light_preview = gr.Image(label="Calibrated LIGHT Frame Preview (PNG)", type="filepath", interactive=False, elem_id="tab2_preview_img", height=400, visible=False)
+        gr.Markdown("### Atmospheric Extinction")
+        tab4_k_value_input = gr.Textbox(label="Extinction Coefficient (k)", value="0.15", elem_id="tab4_k_val") # Default k value
 
-            gr.Markdown("### Download Calibrated LIGHT Frame") # Singular for now
-            # Output for downloading a single calibrated FITS file (e.g., the first one, or a ZIP if multiple)
-            download_calibrated_light = gr.File(label="Download Calibrated LIGHT Frame (FITS)", interactive=False, visible=False, elem_id="tab2_download_fits")
+    with gr.Column(scale=1):
+        gr.Markdown("### Optional: Standard Star Information")
+        tab4_std_star_fits_upload = gr.File(label="Upload Standard Star FITS File (optional)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab4_std_fits")
+        tab4_std_b_mag_input = gr.Textbox(label="Std. Star Known B Mag (e.g., 12.34)", placeholder="Required if Std FITS provided", elem_id="tab4_std_b")
+        tab4_std_v_mag_input = gr.Textbox(label="Std. Star Known V Mag (e.g., 12.01)", placeholder="Required if Std FITS provided", elem_id="tab4_std_v")
 
-            # Connect button to handler
-            # The request object is implicitly passed if the handler includes it in its signature.
-            # Gradio checks the handler's signature.
-            calibrate_lights_button.click(
-                fn=handle_calibrate_lights,
-                inputs=[light_frame_uploads, master_bias_path_state, master_dark_paths_state, master_flat_paths_state],
-                outputs=[tab2_status_display, calibrated_light_preview, download_calibrated_light]
-            )
+with gr.Row():
+    tab4_run_button = gr.Button("Run Photometry Analysis", elem_id="tab4_run_phot_btn", variant="primary")
+
+with gr.Row():
+    with gr.Column(scale=2):
+        gr.Markdown("### Results Table")
+        # Increased rows for better display, added wrap=True
+        tab4_results_table = gr.DataFrame(label="Photometry Results", headers=["ID", "X", "Y", "RA", "Dec", "InstrMag_B", "InstrMag_V", "StdMag_B", "StdMag_V", "B-V"], interactive=False, wrap=True, max_rows=10, overflow_row_behaviour='paginate', elem_id="tab4_results_df")
+        tab4_csv_download = gr.File(label="Download Results as CSV", interactive=False, visible=False, elem_id="tab4_csv_dl")
+    with gr.Column(scale=1):
+        gr.Markdown("### Preview (B-filter)")
+        tab4_preview_image = gr.Image(label="B-filter Preview with Detections/ROI", type="filepath", interactive=False, height=400, visible=False, elem_id="tab4_preview_img_b")
+
+tab4_status_display = gr.Textbox(label="Status / Errors", lines=5, interactive=False, elem_id="tab4_status_text")
+
+# Dummy handler for the button, to be properly implemented later.
+# This is just to make the app runnable without error if button is clicked.
+def handle_run_photometry_analysis_dummy(b_frame, v_frame, roi, k_val, std_fits, std_b, std_v):
+    return "Photometry analysis not fully implemented yet.", None, None, None
+
+tab4_run_button.click(
+    fn=handle_run_photometry_analysis_dummy,
+    inputs=[tab4_b_frame_upload, tab4_v_frame_upload, tab4_roi_input, tab4_k_value_input, tab4_std_star_fits_upload, tab4_std_b_mag_input, tab4_std_v_mag_input],
+    outputs=[tab4_status_display, tab4_results_table, tab4_csv_download, tab4_preview_image]
+)
 """
 
 try:
     if not os.path.exists(app_py_path):
-        print(f"Error: {app_py_path} not found. Cannot update Tab 2 UI.")
+        print(f"Error: {app_py_path} not found. Cannot update Tab 4 UI.")
     else:
         with open(app_py_path, "r") as f:
             content = f.read()
 
-        placeholder_line = 'gr.Markdown("Placeholder for Tab 2: LIGHT Frame Correction")'
-        # Regex to find the placeholder line and capture its indentation
+        # Add the dummy handler function globally if it doesn't exist
+        # This is important because the UI code refers to it.
+        dummy_phot_handler_def = "def handle_run_photometry_analysis_dummy("
+        if dummy_phot_handler_def not in content:
+            main_block_match = re.search(r"^\s*with gr\.Blocks\(\) as astro_app:", content, re.MULTILINE)
+            if main_block_match:
+                insert_pos = main_block_match.start()
+                dummy_handler_code_for_script = """
+# Dummy handler for Tab 4 button (actual handler to be implemented in a later step)
+def handle_run_photometry_analysis_dummy(b_frame, v_frame, roi, k_val, std_fits, std_b, std_v):
+    print(f"Tab 4 dummy handler called with: B:{b_frame}, V:{v_frame}, ROI:{roi}, k:{k_val}, StdFITS:{std_fits}, Std_B:{std_b}, Std_V:{std_v}")
+    # Return empty/default values for all outputs
+    return "Photometry analysis triggered (dummy response).", None, None, None
+"""
+                content = content[:insert_pos] + dummy_handler_code_for_script + "\n" + content[insert_pos:]
+                print("Added dummy_phot_handler_def globally.")
+            else:
+                print("Could not find 'with gr.Blocks()' to insert dummy Tab 4 handler. This might cause issues.")
+
+
+        placeholder_line = 'gr.Markdown("Placeholder for Tab 4: Detailed Photometry and Catalog Analysis")'
         placeholder_regex = r"^(\s*)" + re.escape(placeholder_line) + r"\s*$"
 
         match = re.search(placeholder_regex, content, re.MULTILINE)
@@ -53,36 +88,35 @@ try:
         if match:
             indentation = match.group(1)
 
-            # Prepare the new UI code with correct indentation
-            indented_tab2_ui_lines = []
-            for ui_line in tab2_ui_replacement_code.splitlines():
-                indented_tab2_ui_lines.append(indentation + ui_line)
-            indented_tab2_ui_code = "\n".join(indented_tab2_ui_lines)
+            indented_tab4_ui_lines = []
+            for ui_line in tab4_ui_code.splitlines():
+                indented_tab4_ui_lines.append(indentation + ui_line)
+            indented_tab4_ui_code = "\n".join(indented_tab4_ui_lines)
 
-            # Replace the placeholder line with the new indented UI block
-            updated_content = content.replace(match.group(0), indented_tab2_ui_code, 1)
+            updated_content = content.replace(match.group(0), indented_tab4_ui_code, 1)
 
             with open(app_py_path, "w") as f:
                 f.write(updated_content)
-            print(f"Found placeholder and replaced it with Tab 2 UI. Indentation used: '{indentation}'")
+            print(f"Found placeholder for Tab 4 and replaced it. Indentation used: '{indentation}'")
 
-            # Verification step
+            # Verification
             with open(app_py_path, "r") as f:
-                final_content = f.read()
-            if "calibrate_lights_button.click(" in final_content and "light_frame_uploads = gr.Files(" in final_content:
-                print("Verification successful: Tab 2 UI and click handler seem to be in place.")
+                final_content_check = f.read()
+            if "tab4_run_button = gr.Button(" in final_content_check and \
+               "tab4_b_frame_upload = gr.File(" in final_content_check and \
+               dummy_phot_handler_def in final_content_check: # Check if dummy handler is also in the final file
+                print("Verification successful: Tab 4 UI components and dummy handler seem to be in place.")
             else:
-                print("Verification Warning: Placeholder was replaced, but expected UI elements for Tab 2 not fully verified in final content.")
+                print("Verification Warning: Tab 4 UI placeholder was replaced, but key components or dummy handler not fully verified.")
         else:
-            print(f"Placeholder for Tab 2 ('{placeholder_line}') not found. No changes made to UI.")
-            # Verification for already updated
-            if "calibrate_lights_button.click(" in content and "light_frame_uploads = gr.Files(" in content:
-                 print("Verification successful (already updated): Tab 2 UI and click handler found.")
+            print(f"Placeholder for Tab 4 ('{placeholder_line}') not found.")
+            if "tab4_run_button = gr.Button(" in content: # Check if already updated
+                 print("Tab 4 UI seems to be already implemented.")
             else:
-                 print("Verification failed: Tab 2 UI elements not found, and placeholder was also not found.")
+                 print("No changes made to Tab 4 UI.")
 
 
-except FileNotFoundError: # Should be caught by os.path.exists now
+except FileNotFoundError:
     print(f"Error: {app_py_path} not found.")
 except Exception as e:
     print(f"An error occurred: {e}")

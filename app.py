@@ -427,6 +427,13 @@ def handle_upload_master_flats(uploaded_master_flats_list, current_master_flat_p
 ".join([f"{filt}: {p}" for filt, p in new_master_flat_paths.items()])
     return final_status, new_master_flat_paths, gr.Textbox(value=flat_paths_display_text, label="Uploaded Master FLAT Paths", visible=True, interactive=False)
 
+# Dummy handler for Tab 4 button (actual handler to be implemented in a later step)
+def handle_run_photometry_analysis_dummy(b_frame, v_frame, roi, k_val, std_fits, std_b, std_v):
+    print(f"Tab 4 dummy handler called with: B:{b_frame}, V:{v_frame}, ROI:{roi}, k:{k_val}, StdFITS:{std_fits}, Std_B:{std_b}, Std_V:{std_v}")
+    # Return empty/default values for all outputs
+    return "Photometry analysis triggered (dummy response).", None, None, None
+
+
 with gr.Blocks() as astro_app:
     gr.Markdown("# Astro App")
 
@@ -533,7 +540,52 @@ master_flat_paths_state = gr.State({})
             )
 
         with gr.TabItem("Detailed Photometry (Tab 4)"):
-            gr.Markdown("Placeholder for Tab 4: Detailed Photometry and Catalog Analysis")
+
+            gr.Markdown("## Tab 4: Detailed Photometry and Catalog Analysis")
+
+            with gr.Row():
+                with gr.Column(scale=1):
+                    gr.Markdown("### Input LIGHT Frames")
+                    tab4_b_frame_upload = gr.File(label="Upload B-filter LIGHT Frame (FITS)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab4_b_upload")
+                    tab4_v_frame_upload = gr.File(label="Upload V-filter LIGHT Frame (FITS)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab4_v_upload")
+
+                    gr.Markdown("### Region of Interest (ROI)")
+                    tab4_roi_input = gr.Textbox(label="ROI (center_x, center_y, radius_pixels)", placeholder="e.g., 512,512,100 or leave blank for full image", elem_id="tab4_roi")
+
+                    gr.Markdown("### Atmospheric Extinction")
+                    tab4_k_value_input = gr.Textbox(label="Extinction Coefficient (k)", value="0.15", elem_id="tab4_k_val") # Default k value
+
+                with gr.Column(scale=1):
+                    gr.Markdown("### Optional: Standard Star Information")
+                    tab4_std_star_fits_upload = gr.File(label="Upload Standard Star FITS File (optional)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab4_std_fits")
+                    tab4_std_b_mag_input = gr.Textbox(label="Std. Star Known B Mag (e.g., 12.34)", placeholder="Required if Std FITS provided", elem_id="tab4_std_b")
+                    tab4_std_v_mag_input = gr.Textbox(label="Std. Star Known V Mag (e.g., 12.01)", placeholder="Required if Std FITS provided", elem_id="tab4_std_v")
+
+            with gr.Row():
+                tab4_run_button = gr.Button("Run Photometry Analysis", elem_id="tab4_run_phot_btn", variant="primary")
+
+            with gr.Row():
+                with gr.Column(scale=2):
+                    gr.Markdown("### Results Table")
+                    # Increased rows for better display, added wrap=True
+                    tab4_results_table = gr.DataFrame(label="Photometry Results", headers=["ID", "X", "Y", "RA", "Dec", "InstrMag_B", "InstrMag_V", "StdMag_B", "StdMag_V", "B-V"], interactive=False, wrap=True, max_rows=10, overflow_row_behaviour='paginate', elem_id="tab4_results_df")
+                    tab4_csv_download = gr.File(label="Download Results as CSV", interactive=False, visible=False, elem_id="tab4_csv_dl")
+                with gr.Column(scale=1):
+                    gr.Markdown("### Preview (B-filter)")
+                    tab4_preview_image = gr.Image(label="B-filter Preview with Detections/ROI", type="filepath", interactive=False, height=400, visible=False, elem_id="tab4_preview_img_b")
+
+            tab4_status_display = gr.Textbox(label="Status / Errors", lines=5, interactive=False, elem_id="tab4_status_text")
+
+            # Dummy handler for the button, to be properly implemented later.
+            # This is just to make the app runnable without error if button is clicked.
+            def handle_run_photometry_analysis_dummy(b_frame, v_frame, roi, k_val, std_fits, std_b, std_v):
+                return "Photometry analysis not fully implemented yet.", None, None, None
+
+            tab4_run_button.click(
+                fn=handle_run_photometry_analysis_dummy,
+                inputs=[tab4_b_frame_upload, tab4_v_frame_upload, tab4_roi_input, tab4_k_value_input, tab4_std_star_fits_upload, tab4_std_b_mag_input, tab4_std_v_mag_input],
+                outputs=[tab4_status_display, tab4_results_table, tab4_csv_download, tab4_preview_image]
+            )
             # TODO: Add UI components for Tab 4
 
         with gr.TabItem("H-R Diagram (Tab 5)"):
