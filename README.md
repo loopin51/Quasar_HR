@@ -32,9 +32,19 @@ Follow these steps to set up your environment and run Astro App:
     ```
 
 4.  **Install Dependencies:**
-    Install all necessary Python libraries using the provided `requirements.txt` file:
+    Install all necessary Python libraries using the provided `requirements.txt` file.
+
+    It's recommended to use `uv` for faster dependency resolution. If you don't have `uv` installed, you can install it by running:
     ```bash
-    pip install -r requirements.txt
+    pip install uv
+    ```
+    or
+    ```bash
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    ```
+    Once `uv` is installed, use the following command to install dependencies:
+    ```bash
+    uv pip install -r requirements.txt
     ```
 
 ## Running the Application
