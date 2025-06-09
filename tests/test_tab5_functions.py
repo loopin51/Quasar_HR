@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg') # Ensure non-interactive backend for tests
 import matplotlib.pyplot as plt
-from unittest.mock import MagicMock, patch # Make sure patch is imported
+from unittest.mock import MagicMock, patch
 
 # Add the parent directory to sys.path to allow importing modules
 import sys

@@ -26,6 +26,7 @@ from tab4_functions import perform_photometry # May use for simplified photometr
 from tab5_functions import plot_hr_diagram
 from scipy.stats import linregress # For Tab 3
 import time # For unique filenames and history
+import re # For sanitizing filenames in upload handlers
 
 # --- Helper for cleanup in handlers ---
 def _try_remove(file_path):
@@ -48,12 +49,12 @@ def handle_generate_master_bias(bias_uploads_list, current_master_bias_path_stat
         except OSError as e: return f"Error creating output directory {output_dir}: {e}", current_master_bias_path_state, gr.File(visible=False)
     output_master_bias_path = os.path.join(output_dir, "master_bias.fits")
     uploaded_file_paths = [f.name for f in bias_uploads_list]
-    print(f"Calling create_master_frame for BIAS with files: {uploaded_file_paths} to output: {output_master_bias_path}")
+    # print(f"Calling create_master_frame for BIAS with files: {uploaded_file_paths} to output: {output_master_bias_path}") # Verbose
     try:
         success = create_master_frame(file_paths=uploaded_file_paths, output_path=output_master_bias_path, method="average", frame_type="BIAS")
     except Exception as e_create: return f"Exception during Master BIAS generation: {e_create}", current_master_bias_path_state, gr.File(visible=False)
     if success:
-        print(f"Master BIAS generated successfully: {output_master_bias_path}")
+        # print(f"Master BIAS generated successfully: {output_master_bias_path}") # Verbose
         return f"Master BIAS generated: {output_master_bias_path}", output_master_bias_path, gr.File(value=output_master_bias_path, label=f"Download Master BIAS ({os.path.basename(output_master_bias_path)})", visible=True, interactive=True)
     else:
         _try_remove(output_master_bias_path)
@@ -61,13 +62,13 @@ def handle_generate_master_bias(bias_uploads_list, current_master_bias_path_stat
 
 # --- Handler for Tab 1: Master DARKs ---
 def handle_generate_master_dark(dark_uploads_list, master_bias_path, current_master_dark_paths_state):
-    print(f"Master BIAS path received in handle_generate_master_dark: {master_bias_path}")
+    # print(f"Master BIAS path received in handle_generate_master_dark: {master_bias_path}") # Verbose
     if not dark_uploads_list: return "No DARK files uploaded.", current_master_dark_paths_state or {}, gr.Textbox(visible=False)
     if not master_bias_path or not os.path.exists(master_bias_path): return "Master BIAS not available or path invalid.", current_master_dark_paths_state or {}, gr.Textbox(visible=False)
-    master_bias_data_for_darks = load_fits_data(master_bias_path) # Renamed to avoid conflict
+    master_bias_data_for_darks = load_fits_data(master_bias_path)
     if master_bias_data_for_darks is None: return f"Failed to load Master BIAS data from {master_bias_path}.", current_master_dark_paths_state or {}, gr.Textbox(visible=False)
     output_dir = "masters_output"; temp_subtracted_dark_dir = os.path.join(output_dir, "temp_subtracted_darks")
-    os.makedirs(temp_subtracted_dark_dir, exist_ok=True); print(f"Ensured temp directory exists: {temp_subtracted_dark_dir}")
+    os.makedirs(temp_subtracted_dark_dir, exist_ok=True) # print(f"Ensured temp directory exists: {temp_subtracted_dark_dir}") # Verbose
     grouped_darks_by_exp = {}; raw_dark_paths = [f.name for f in dark_uploads_list]
     for dark_path in raw_dark_paths:
         header = get_fits_header(dark_path)
@@ -85,7 +86,8 @@ def handle_generate_master_dark(dark_uploads_list, master_bias_path, current_mas
     new_master_dark_paths = (current_master_dark_paths_state or {}).copy(); status_messages = []
     for exptime_str, file_list in grouped_darks_by_exp.items():
         if not file_list: continue
-        print(f"Processing DARKs for exposure: {exptime_str} ({len(file_list)} files)"); bias_subtracted_dark_paths = []
+        # print(f"Processing DARKs for exposure: {exptime_str} ({len(file_list)} files)"); # Verbose
+        bias_subtracted_dark_paths = []
         for i, raw_dark_path_iter in enumerate(file_list):
             raw_dark_data = load_fits_data(raw_dark_path_iter)
             if raw_dark_data is None: status_messages.append(f"Warning: Failed to load raw DARK {raw_dark_path_iter}."); continue
@@ -112,7 +114,7 @@ def handle_generate_master_dark(dark_uploads_list, master_bias_path, current_mas
 # --- Handler for Tab 1: Master FLATs ---
 def handle_generate_master_flat(flat_uploads_list, current_master_flat_paths_state):
     if not flat_uploads_list: return "No FLAT files uploaded.", current_master_flat_paths_state or {}, gr.Textbox(visible=False)
-    output_dir = "masters_output"; os.makedirs(output_dir, exist_ok=True); print(f"Ensured output directory exists: {output_dir}")
+    output_dir = "masters_output"; os.makedirs(output_dir, exist_ok=True) # print(f"Ensured output directory exists: {output_dir}") # Verbose
     grouped_flats_by_filter = {}; raw_flat_paths = [f.name for f in flat_uploads_list]
     for flat_path in raw_flat_paths:
         header = get_fits_header(flat_path)
@@ -127,7 +129,7 @@ def handle_generate_master_flat(flat_uploads_list, current_master_flat_paths_sta
     new_master_flat_paths = (current_master_flat_paths_state or {}).copy(); status_messages = []
     for filter_name_key, file_list in grouped_flats_by_filter.items():
         if not file_list: continue
-        print(f"Processing Prelim Master FLATs for filter: {filter_name_key} ({len(file_list)} files)")
+        # print(f"Processing Prelim Master FLATs for filter: {filter_name_key} ({len(file_list)} files)") # Verbose
         output_master_flat_path = os.path.join(output_dir, f"prelim_master_flat_{filter_name_key}.fits")
         try:
             success = create_master_frame(file_paths=file_list, output_path=output_master_flat_path, method="median", frame_type=f"PRELIM_FLAT_{filter_name_key.upper()}")
@@ -166,12 +168,12 @@ def handle_upload_master_darks(uploaded_master_darks_list, current_master_dark_p
             base_name_part = os.path.basename(file_obj.name); safe_base_name = re.sub(r'[^a-zA-Z0-9_.-]', '_', base_name_part) # Sanitize
             destination_filename = f"uploaded_master_dark_{exp_time_key}_{safe_base_name}"; destination_path = os.path.join(output_dir, destination_filename)
             shutil.copy(file_obj.name, destination_path); new_master_dark_paths[exp_time_key] = destination_path
-            status_messages.append(f"Uploaded DARK '{base_name_part}' (key: {exp_time_key}): {destination_path}"); print(f"Uploaded DARK '{base_name_part}' -> {destination_path} (key {exp_time_key})")
+            status_messages.append(f"Uploaded DARK '{base_name_part}' (key: {exp_time_key}): {destination_path}"); # print(f"Uploaded DARK '{base_name_part}' -> {destination_path} (key {exp_time_key})") # Verbose
         except Exception as e: error_msg = f"Error copying DARK {file_obj.name}: {e}"; status_messages.append(error_msg); print(error_msg)
     final_status = "\\n".join(status_messages) if status_messages else "No files processed."
     if not new_master_dark_paths and status_messages: final_status = "\\n".join(status_messages)
     elif not new_master_dark_paths and not status_messages: final_status = "No dark files processed."
-    elif not status_messages and new_master_dark_paths: final_status = "All darks uploaded." # Should be some message
+    elif not status_messages and new_master_dark_paths: final_status = "All darks uploaded."
     dark_paths_display_text = "Uploaded/Updated Master DARKs:\\n" + "\\n".join([f"{exp}: {p}" for exp, p in new_master_dark_paths.items()])
     return final_status, new_master_dark_paths, gr.Textbox(value=dark_paths_display_text, label="Uploaded Master DARK Paths", visible=True, interactive=False)
 
@@ -185,12 +187,12 @@ def handle_upload_master_flats(uploaded_master_flats_list, current_master_flat_p
             if header:
                 filter_val = header.get('FILTER', header.get('FILTER1', header.get('FILTNAME')))
                 if filter_val is not None: filter_key = str(filter_val).strip().replace(" ", "_");
-                if not filter_key: filter_key = "empty_filter" # Handle empty filter value after stripping
+                if not filter_key: filter_key = "empty_filter"
             else: filter_key = f"noheader_{os.path.basename(file_obj.name).split('.')[0]}"
-            base_name_part = os.path.basename(file_obj.name); safe_base_name = re.sub(r'[^a-zA-Z0-9_.-]', '_', base_name_part) # Sanitize
+            base_name_part = os.path.basename(file_obj.name); safe_base_name = re.sub(r'[^a-zA-Z0-9_.-]', '_', base_name_part)
             destination_filename = f"uploaded_master_flat_{filter_key}_{safe_base_name}"; destination_path = os.path.join(output_dir, destination_filename)
             shutil.copy(file_obj.name, destination_path); new_master_flat_paths[filter_key] = destination_path
-            status_messages.append(f"Uploaded FLAT '{base_name_part}' (key: {filter_key}): {destination_path}"); print(f"Uploaded FLAT '{base_name_part}' -> {destination_path} (key {filter_key})")
+            status_messages.append(f"Uploaded FLAT '{base_name_part}' (key: {filter_key}): {destination_path}"); # print(f"Uploaded FLAT '{base_name_part}' -> {destination_path} (key {filter_key})") # Verbose
         except Exception as e: error_msg = f"Error copying FLAT {file_obj.name}: {e}"; status_messages.append(error_msg); print(error_msg)
     final_status = "\\n".join(status_messages) if status_messages else "No files processed."
     if not new_master_flat_paths and status_messages: final_status = "\\n".join(status_messages)
@@ -216,11 +218,11 @@ def create_png_preview(fits_data, output_png_path, stretch_mode='zscale', percen
     except Exception as e: print(f"Error saving PNG preview: {e}"); plt.close(); return None
 
 # --- Handler for Tab 2: LIGHT Frame Correction ---
-def handle_calibrate_lights(light_uploads_list, mbias_path, mdark_paths_dict, mflat_paths_dict, stretch_option_dropdown, request: gr.Request):
+def handle_calibrate_lights(light_uploads_list, mbias_path, mdark_paths_dict, mflat_paths_dict, stretch_option_dropdown): # Removed request: gr.Request
     if not light_uploads_list: return "No LIGHT frames uploaded for calibration.", None, None, gr.File(visible=False)
     status_messages = [f"Processing {len(light_uploads_list)} LIGHT frame(s)..."]
     calibrated_dir = os.path.join("calibrated_lights_output", "tab2_corrected")
-    preview_dir = os.path.join(calibrated_dir, "previews") # For previews and temp processed flats
+    preview_dir = os.path.join(calibrated_dir, "previews")
     os.makedirs(preview_dir, exist_ok=True)
     if mdark_paths_dict is None: mdark_paths_dict = {}
     if mflat_paths_dict is None: mflat_paths_dict = {}
@@ -384,16 +386,14 @@ def handle_tab3_extinction_from_fits(
         raw_light_path = fits_file_obj.name
         base_name = os.path.splitext(os.path.basename(raw_light_path))[0]
         current_status_prefix = f"File {i+1} ({base_name}): "
-        skipped_reason = ""
 
         try:
             raw_header = get_fits_header(raw_light_path)
             if not raw_header:
                 status_messages.append(current_status_prefix + "ERROR: Could not read header. Skipping.")
-                results_data.append({"Filename": base_name, "Airmass": np.nan, "Instrumental_Magnitude": np.nan, "Skipped_Reason": "Header read error"})
+                results_data.append({"Filename": base_name, "Airmass": np.nan, "Instrumental_Magnitude": np.nan, "Raw_Flux": np.nan, "Net_Flux": np.nan, "X_cen": np.nan, "Y_cen": np.nan, "Skipped_Reason": "Header read error"})
                 continue
 
-            # --- Calibration similar to Tab 2 ---
             calibrated_fits_path = os.path.join(temp_dir_path, f"{base_name}_calibrated.fits")
 
             light_exptime_val = raw_header.get('EXPTIME', raw_header.get('EXPOSURE'))
@@ -403,15 +403,15 @@ def handle_tab3_extinction_from_fits(
                     light_exptime_float = float(light_exptime_val)
                     dark_exp_key_s = str(light_exptime_float).replace('.', 'p') + "s"
                     dark_exp_key_no_s = str(light_exptime_float).replace('.', 'p')
-                    if dark_exp_key_s in mdark_paths_dict: selected_dark_for_light_path = mdark_paths_dict[dark_exp_key_s]
-                    elif dark_exp_key_no_s in mdark_paths_dict: selected_dark_for_light_path = mdark_paths_dict[dark_exp_key_no_s]
-                except ValueError: pass # Handled by correct_light_frame if still None
+                    if mdark_paths_dict and dark_exp_key_s in mdark_paths_dict: selected_dark_for_light_path = mdark_paths_dict[dark_exp_key_s]
+                    elif mdark_paths_dict and dark_exp_key_no_s in mdark_paths_dict: selected_dark_for_light_path = mdark_paths_dict[dark_exp_key_no_s]
+                except ValueError: pass
 
             light_filter_name = str(raw_header.get('FILTER', raw_header.get('FILTER1', raw_header.get('FILTNAME', '')))).strip().replace(" ", "_")
             path_to_use_for_final_flat = None
             temp_processed_flat_path_tab3 = None
 
-            if light_filter_name and mflat_paths_dict.get(light_filter_name) and os.path.exists(mflat_paths_dict.get(light_filter_name)):
+            if light_filter_name and mflat_paths_dict and mflat_paths_dict.get(light_filter_name) and os.path.exists(mflat_paths_dict.get(light_filter_name)):
                 prelim_flat_path = mflat_paths_dict.get(light_filter_name)
                 prelim_flat_data = load_fits_data(prelim_flat_path)
                 prelim_flat_header = get_fits_header(prelim_flat_path)
@@ -427,7 +427,10 @@ def handle_tab3_extinction_from_fits(
                                 flat_exptime_float = float(flat_exptime_val)
                                 flat_dark_key_s = str(flat_exptime_float).replace('.', 'p') + "s"
                                 flat_dark_key_no_s = str(flat_exptime_float).replace('.', 'p')
-                                dark_for_flat_path = mdark_paths_dict.get(flat_dark_key_s) or mdark_paths_dict.get(flat_dark_key_no_s)
+                                dark_for_flat_path = None
+                                if mdark_paths_dict and flat_dark_key_s in mdark_paths_dict: dark_for_flat_path = mdark_paths_dict[flat_dark_key_s]
+                                elif mdark_paths_dict and flat_dark_key_no_s in mdark_paths_dict: dark_for_flat_path = mdark_paths_dict[flat_dark_key_no_s]
+
                                 if dark_for_flat_path and os.path.exists(dark_for_flat_path):
                                     dark_for_flat_data = load_fits_data(dark_for_flat_path)
                                     if dark_for_flat_data is not None and dark_for_flat_data.shape == processed_flat_data.shape:
@@ -439,13 +442,13 @@ def handle_tab3_extinction_from_fits(
                                                 if dark_for_flat_exptime_float > 0:
                                                     scale = flat_exptime_float / dark_for_flat_exptime_float
                                                     processed_flat_data -= (dark_for_flat_data.astype(np.float32) * scale)
-                                            except ValueError: processed_flat_data -= dark_for_flat_data.astype(np.float32) # Unscaled
-                                        else: processed_flat_data -= dark_for_flat_data.astype(np.float32) # Unscaled
-                            except ValueError: pass # Use bias-subtracted flat
+                                            except ValueError: processed_flat_data -= dark_for_flat_data.astype(np.float32)
+                                        else: processed_flat_data -= dark_for_flat_data.astype(np.float32)
+                            except ValueError: pass
 
                     median_flat = np.median(processed_flat_data)
                     if median_flat != 0: processed_flat_data /= median_flat
-                    else: processed_flat_data = None # Error case
+                    else: processed_flat_data = None
 
                     if processed_flat_data is not None:
                         temp_flat_filename = f"temp_tab3_proc_flat_{light_filter_name}_{base_name}.fits"
@@ -454,68 +457,81 @@ def handle_tab3_extinction_from_fits(
                         if save_fits_data(temp_processed_flat_path_tab3, processed_flat_data, header=temp_flat_header):
                             path_to_use_for_final_flat = temp_processed_flat_path_tab3
 
+            # Check if flat fielding was expected but not performed
+            flat_skipped_due_to_missing_master = False
+            if light_filter_name and (not mflat_paths_dict or not mflat_paths_dict.get(light_filter_name) or not os.path.exists(mflat_paths_dict.get(light_filter_name))):
+                # A filter was present, implying a flat was desired, but the master flat for it was missing.
+                # And path_to_use_for_final_flat would be None in this case if not processed above.
+                if path_to_use_for_final_flat is None:
+                    flat_skipped_due_to_missing_master = True
+                    status_messages.append(current_status_prefix + f"Warning: Required flat for filter '{light_filter_name}' was not found. Marking as calibration failed.")
+
+            if flat_skipped_due_to_missing_master:
+                results_data.append({"Filename": base_name, "Airmass": np.nan, "Instrumental_Magnitude": np.nan, "Raw_Flux": np.nan, "Net_Flux": np.nan, "X_cen": np.nan, "Y_cen": np.nan, "Skipped_Reason": "Calibration failed"})
+                if temp_processed_flat_path_tab3: _try_remove(temp_processed_flat_path_tab3)
+                _try_remove(calibrated_fits_path) # Also remove any intermediate calibrated file
+                continue
+
             if not correct_light_frame(raw_light_path, calibrated_fits_path, mbias_path, selected_dark_for_light_path, path_to_use_for_final_flat):
-                status_messages.append(current_status_prefix + f"ERROR: Calibration failed. Skipping.")
-                results_data.append({"Filename": base_name, "Airmass": np.nan, "Instrumental_Magnitude": np.nan, "Skipped_Reason": "Calibration failed"})
+                status_messages.append(current_status_prefix + f"ERROR: correct_light_frame returned false. Skipping.")
+                results_data.append({"Filename": base_name, "Airmass": np.nan, "Instrumental_Magnitude": np.nan, "Raw_Flux": np.nan, "Net_Flux": np.nan, "X_cen": np.nan, "Y_cen": np.nan, "Skipped_Reason": "Calibration failed"})
                 if temp_processed_flat_path_tab3: _try_remove(temp_processed_flat_path_tab3)
                 continue
             status_messages.append(current_status_prefix + f"Calibrated: {os.path.basename(calibrated_fits_path)}")
             if temp_processed_flat_path_tab3: _try_remove(temp_processed_flat_path_tab3)
 
-            # Airmass Extraction
             airmass_val = raw_header.get('AIRMASS')
             if airmass_val is None:
                 status_messages.append(current_status_prefix + "ERROR: AIRMASS keyword not found in header. Skipping.")
-                results_data.append({"Filename": base_name, "Airmass": np.nan, "Instrumental_Magnitude": np.nan, "Skipped_Reason": "AIRMASS not found"})
+                results_data.append({"Filename": base_name, "Airmass": np.nan, "Instrumental_Magnitude": np.nan, "Raw_Flux": np.nan, "Net_Flux": np.nan, "X_cen": np.nan, "Y_cen": np.nan, "Skipped_Reason": "AIRMASS not found"})
                 continue
             try:
                 airmass = float(airmass_val)
             except ValueError:
                 status_messages.append(current_status_prefix + f"ERROR: Invalid AIRMASS value '{airmass_val}'. Skipping.")
-                results_data.append({"Filename": base_name, "Airmass": airmass_val, "Instrumental_Magnitude": np.nan, "Skipped_Reason": "Invalid AIRMASS value"})
+                results_data.append({"Filename": base_name, "Airmass": airmass_val, "Instrumental_Magnitude": np.nan, "Raw_Flux": np.nan, "Net_Flux": np.nan, "X_cen": np.nan, "Y_cen": np.nan, "Skipped_Reason": "Invalid AIRMASS value"})
                 continue
 
-            # Source Detection and Photometry
             calibrated_data = load_fits_data(calibrated_fits_path)
             if calibrated_data is None:
                 status_messages.append(current_status_prefix + "ERROR: Could not load calibrated data for photometry. Skipping.")
-                results_data.append({"Filename": base_name, "Airmass": airmass, "Instrumental_Magnitude": np.nan, "Skipped_Reason": "Failed to load calibrated data"})
+                results_data.append({"Filename": base_name, "Airmass": airmass, "Instrumental_Magnitude": np.nan, "Raw_Flux": np.nan, "Net_Flux": np.nan, "X_cen": np.nan, "Y_cen": np.nan, "Skipped_Reason": "Failed to load calibrated data"})
                 continue
 
             mean, median, std = sigma_clipped_stats(calibrated_data, sigma=3.0)
             daofind = DAOStarFinder(fwhm=FWHM_FIXED, threshold=DETECTION_THRESHOLD_SIGMA * std)
-            sources_table = daofind(calibrated_data - median) # Subtract median for better detection
+            sources_table = daofind(calibrated_data - median)
 
             if not sources_table:
                 status_messages.append(current_status_prefix + "No sources found. Skipping.")
-                results_data.append({"Filename": base_name, "Airmass": airmass, "Instrumental_Magnitude": np.nan, "Skipped_Reason": "No sources detected"})
+                results_data.append({"Filename": base_name, "Airmass": airmass, "Instrumental_Magnitude": np.nan, "Raw_Flux": np.nan, "Net_Flux": np.nan, "X_cen": np.nan, "Y_cen": np.nan, "Skipped_Reason": "No sources detected"})
                 continue
 
-            sources_table.sort('flux', reverse=True) # Brightest source first
+            sources_table.sort('flux', reverse=True)
             brightest_source = sources_table[0]
             x_cen, y_cen = brightest_source['xcentroid'], brightest_source['ycentroid']
 
             aperture = CircularAperture((x_cen, y_cen), r=APERTURE_RADIUS_FIXED)
             annulus_aperture = CircularAnnulus((x_cen, y_cen), r_in=SKY_INNER_FIXED, r_out=SKY_OUTER_FIXED)
 
-            # Perform photometry using ApertureStats for local background subtraction
             ap_stats = ApertureStats(calibrated_data, aperture)
             ann_stats = ApertureStats(calibrated_data, annulus_aperture, sigma_clip=SigmaClip(sigma=3.0))
 
-            if ap_stats.sum is None: # Should not happen if source is found
+            if ap_stats.sum is None:
                 status_messages.append(current_status_prefix + "Photometry failed (aperture sum is None). Skipping.")
-                results_data.append({"Filename": base_name, "Airmass": airmass, "Instrumental_Magnitude": np.nan, "Skipped_Reason": "Aperture sum None", "X_cen": x_cen, "Y_cen": y_cen})
+                results_data.append({"Filename": base_name, "Airmass": airmass, "Instrumental_Magnitude": np.nan, "Raw_Flux": np.nan, "Net_Flux": np.nan, "X_cen": x_cen, "Y_cen": y_cen, "Skipped_Reason": "Aperture sum None"})
                 continue
 
             raw_flux = ap_stats.sum
 
-            if ann_stats.median is None or ann_stats.sum is None or ann_stats.area == 0: # Check if annulus stats are valid
-                status_messages.append(current_status_prefix + "Warning: Sky annulus stats invalid. Using zero sky subtraction.")
+            # CRITICAL FIX: Use aperture.area instead of ap_stats.area for sky sum calculation.
+            if ann_stats.median is None or ann_stats.sum is None or aperture.area == 0:
+                status_messages.append(current_status_prefix + "Warning: Sky annulus stats invalid or aperture area is zero. Using zero sky subtraction.")
                 sky_median_per_pixel = 0.0
             else:
                 sky_median_per_pixel = ann_stats.median
 
-            sky_sum_in_aperture = sky_median_per_pixel * aperture.area # Corrected: use aperture.area
+            sky_sum_in_aperture = sky_median_per_pixel * aperture.area # Corrected line
             net_flux = raw_flux - sky_sum_in_aperture
 
             if net_flux <= 0:
@@ -530,40 +546,38 @@ def handle_tab3_extinction_from_fits(
 
         except Exception as e:
             status_messages.append(current_status_prefix + f"ERROR during processing: {e}. Skipping.")
-            results_data.append({"Filename": base_name, "Airmass": np.nan, "Instrumental_Magnitude": np.nan, "Skipped_Reason": str(e)})
+            results_data.append({"Filename": base_name, "Airmass": np.nan, "Instrumental_Magnitude": np.nan, "Raw_Flux": np.nan, "Net_Flux": np.nan, "X_cen": np.nan, "Y_cen": np.nan, "Skipped_Reason": str(e)})
             continue
         finally:
-            _try_remove(calibrated_fits_path) # Clean up individual calibrated file
+            _try_remove(calibrated_fits_path)
 
     df_results = pd.DataFrame(results_data)
 
     if len(airmass_mag_pairs) < 2:
         status_messages.append("ERROR: Less than 2 data points collected. Cannot perform linear regression.")
-        _try_rmdir_if_empty(temp_dir_path) # Clean up temp directory
+        if temp_dir_obj: temp_dir_obj.cleanup()
         return "\\n".join(status_messages), "", "", "", None, df_results
 
-    # Perform linear regression
     airmasses_arr, magnitudes_arr = zip(*airmass_mag_pairs)
     regression = linregress(airmasses_arr, magnitudes_arr)
 
-    k_val = -regression.slope
-    m0_val = regression.intercept
-    k_err_val = regression.stderr # Standard error of the slope
+    k_val = -regression.slope if regression.slope is not None else np.nan
+    m0_val = regression.intercept if regression.intercept is not None else np.nan
+    k_err_val = regression.stderr if regression.stderr is not None else np.nan
 
     status_messages.append(f"Linear Regression: k = {k_val:.4f}, m0 = {m0_val:.4f}, k_err = {k_err_val:.4f}")
 
-    # Generate plot
     plot_path = None
     plot_filename = f"tab3_extinction_plot_{time.strftime('%Y%m%d_%H%M%S')}.png"
-    # Save plot in a directory Gradio can serve, e.g., a subdir of calibrated_lights_output/previews
     plot_save_dir = os.path.join("calibrated_lights_output", "previews", "tab3_plots")
     os.makedirs(plot_save_dir, exist_ok=True)
     plot_path = os.path.join(plot_save_dir, plot_filename)
 
     plt.figure(figsize=(8, 6))
     plt.scatter(airmasses_arr, magnitudes_arr, color='blue', label='Data Points')
-    fit_line_y = regression.intercept + regression.slope * np.array(airmasses_arr)
-    plt.plot(airmasses_arr, fit_line_y, color='red', label=f'Fit: m = {m0_val:.3f} - {k_val:.3f}X')
+    if regression.slope is not None and regression.intercept is not None:
+        fit_line_y = regression.intercept + regression.slope * np.array(airmasses_arr)
+        plt.plot(airmasses_arr, fit_line_y, color='red', label=f'Fit: m = {m0_val:.3f} - {k_val:.3f}X')
     plt.xlabel("Airmass (X)")
     plt.ylabel("Instrumental Magnitude (m)")
     plt.title("Atmospheric Extinction Plot (Tab 3)")
@@ -574,15 +588,15 @@ def handle_tab3_extinction_from_fits(
     except Exception as e_plot:
         plt.close()
         status_messages.append(f"Plot generation failed: {e_plot}")
-        plot_path = None # Ensure None if save fails
+        plot_path = None
 
-    _try_rmdir_if_empty(temp_dir_path) # Clean up temp directory
+    if temp_dir_obj: temp_dir_obj.cleanup()
 
     return ("\\n".join(status_messages),
-            f"{k_val:.4f}" if k_val is not None else "",
-            f"{k_err_val:.4f}" if k_err_val is not None else "",
-            f"{m0_val:.4f}" if m0_val is not None else "",
-            plot_path, # Path to image
+            f"{k_val:.4f}" if not np.isnan(k_val) else "",
+            f"{k_err_val:.4f}" if not np.isnan(k_err_val) else "",
+            f"{m0_val:.4f}" if not np.isnan(m0_val) else "",
+            plot_path,
             df_results)
 
 
@@ -594,9 +608,8 @@ def handle_tab4_photometry(
     tab4_fwhm_input_val, tab4_aperture_radius_input_val,
     tab4_sky_inner_input_val, tab4_sky_outer_input_val,
     tab4_k_value_str,
-    master_bias_path_state, master_dark_paths_state, master_flat_paths_state,
-    request: gr.Request
-):
+    master_bias_path_state, master_dark_paths_state, master_flat_paths_state
+): # Removed request: gr.Request
     status_messages = [
         "Starting Tab 4 Photometry Analysis...",
         f"Settings: FWHM={tab4_fwhm_input_val}px, Aperture Radius={tab4_aperture_radius_input_val}px",
@@ -606,24 +619,31 @@ def handle_tab4_photometry(
     display_columns = ['ID', 'X_B', 'Y_B', 'RA_deg', 'Dec_deg', 'InstrMag_B', 'InstrMag_V', 'StdMag_B', 'StdMag_V', 'B-V']
     if master_dark_paths_state is None: master_dark_paths_state = {}
     if master_flat_paths_state is None: master_flat_paths_state = {}
+    temp_dir_obj = tempfile.TemporaryDirectory(prefix="tab4_phot_") # Use tempfile for auto-cleanup
+    temp_dir_path = temp_dir_obj.name
+    calibrated_dir = os.path.join(temp_dir_path, "calibrated") # Store intermediate calibrated files here
+    previews_dir = os.path.join("calibrated_lights_output", "previews", "tab4_previews") # User-facing previews
+    csv_output_dir = os.path.join("calibrated_lights_output", "csv_results", "tab4_results") # User-facing CSVs
+
+    os.makedirs(calibrated_dir, exist_ok=True)
+    os.makedirs(previews_dir, exist_ok=True)
+    os.makedirs(csv_output_dir, exist_ok=True)
+
     try:
         if not tab4_b_file_obj or not tab4_v_file_obj: raise ValueError("Both B and V frames must be uploaded.")
         raw_b_path = tab4_b_file_obj.name; raw_v_path = tab4_v_file_obj.name
         status_messages.append(f"B: {os.path.basename(raw_b_path)}, V: {os.path.basename(raw_v_path)}")
-        b_data_raw = load_fits_data(raw_b_path); b_header = get_fits_header(raw_b_path)
-        v_data_raw = load_fits_data(raw_v_path); v_header = get_fits_header(raw_v_path)
-        if b_data_raw is None or b_header is None: raise ValueError(f"Could not load B-frame/header: {raw_b_path}")
-        if v_data_raw is None or v_header is None: raise ValueError(f"Could not load V-frame/header: {raw_v_path}")
-        status_messages.append("B,V LIGHTs loaded.")
-        # Use a different variable name for master_bias_data for Tab4 to avoid conflict if it's also used in Tab3's scope or other parts
+        b_header = get_fits_header(raw_b_path)
+        v_header = get_fits_header(raw_v_path)
+        if b_header is None: raise ValueError(f"Could not load B-frame header: {raw_b_path}")
+        if v_header is None: raise ValueError(f"Could not load V-frame header: {raw_v_path}")
+        status_messages.append("B,V LIGHT headers loaded.")
+
         master_bias_data_tab4 = load_fits_data(master_bias_path_state) if master_bias_path_state and os.path.exists(master_bias_path_state) else None
-        if master_bias_path_state and master_bias_data_tab4 is None : raise ValueError(f"Failed to load Master BIAS: {master_bias_path_state}")
-        if master_bias_data_tab4 is not None: status_messages.append(f"Master BIAS loaded for Tab 4 processing.")
+        if master_bias_path_state and master_bias_data_tab4 is None : status_messages.append(f"Warning: Failed to load Master BIAS from {master_bias_path_state}. Calibration may be affected.")
+        elif master_bias_data_tab4 is not None: status_messages.append(f"Master BIAS loaded for Tab 4 processing.")
 
-        temp_dir = os.path.join("masters_output", "temp_final_flats_tab4"); calibrated_dir = os.path.join("calibrated_lights_output", "tab4_corrected")
-        os.makedirs(temp_dir, exist_ok=True); os.makedirs(calibrated_dir, exist_ok=True)
-
-        def _correct_science_frame(label, raw_path, header, data_raw_arg_unused): # data_raw_arg_unused can be removed if not used
+        def _correct_science_frame(label, raw_path, header):
             status_messages.append(f"Correcting {label}-frame...");
             science_frame_exptime_val = header.get('EXPTIME', header.get('EXPOSURE'))
             science_frame_filter_name = header.get('FILTER', header.get('FILTER1', header.get('FILTNAME')))
@@ -633,74 +653,83 @@ def handle_tab4_photometry(
             science_frame_exptime_float = float(science_frame_exptime_val)
             science_frame_filter_key = str(science_frame_filter_name).strip().replace(" ", "_")
 
-            science_dark_exp_key = str(science_frame_exptime_float).replace('.', 'p') + "s"
-            actual_dark_for_light_path = master_dark_paths_state.get(science_dark_exp_key)
-            if not actual_dark_for_light_path and science_dark_exp_key.endswith("s"):
-                 actual_dark_for_light_path = master_dark_paths_state.get(science_dark_exp_key[:-1])
+            actual_dark_for_light_path = None
+            if master_dark_paths_state:
+                dark_exp_key_s = str(science_frame_exptime_float).replace('.', 'p') + "s"
+                dark_exp_key_no_s = str(science_frame_exptime_float).replace('.', 'p')
+                if dark_exp_key_s in master_dark_paths_state: actual_dark_for_light_path = master_dark_paths_state[dark_exp_key_s]
+                elif dark_exp_key_no_s in master_dark_paths_state: actual_dark_for_light_path = master_dark_paths_state[dark_exp_key_no_s]
 
-            prelim_flat_p = master_flat_paths_state.get(science_frame_filter_key); final_flat_path_for_science = None
-            if prelim_flat_p and os.path.exists(prelim_flat_p):
-                prelim_flat_d = load_fits_data(prelim_flat_p)
-                prelim_flat_header = get_fits_header(prelim_flat_p)
-                if prelim_flat_d is not None and master_bias_data_tab4 is not None: # Use tab4 specific bias data
-                    if prelim_flat_d.shape!=master_bias_data_tab4.shape:
-                        raise ValueError(f"Prelim. {label}-FLAT ({prelim_flat_p}) shape mismatch vs Master BIAS.")
-                    flat_cal_data = prelim_flat_d - master_bias_data_tab4
-                    status_messages.append(f"Subtracted Master BIAS from Prelim. {label}-FLAT {os.path.basename(prelim_flat_p)}.")
+            final_flat_path_for_science = None; temp_flat_generated_path = None
+            if master_flat_paths_state and science_frame_filter_key in master_flat_paths_state:
+                prelim_flat_p = master_flat_paths_state[science_frame_filter_key]
+                if prelim_flat_p and os.path.exists(prelim_flat_p):
+                    prelim_flat_d = load_fits_data(prelim_flat_p)
+                    prelim_flat_header = get_fits_header(prelim_flat_p)
+                    if prelim_flat_d is not None:
+                        flat_cal_data = prelim_flat_d.astype(np.float32, copy=True)
+                        if master_bias_data_tab4 is not None:
+                            if prelim_flat_d.shape!=master_bias_data_tab4.shape:
+                                status_messages.append(f"Warn: Prelim. {label}-FLAT ({os.path.basename(prelim_flat_p)}) shape mismatch vs Master BIAS. BIAS not sub from flat.")
+                            else: flat_cal_data -= master_bias_data_tab4.astype(np.float32); status_messages.append(f"Subtracted Master BIAS from Prelim. {label}-FLAT {os.path.basename(prelim_flat_p)}.")
 
-                    if prelim_flat_header:
-                        flat_exptime_val = prelim_flat_header.get('EXPTIME', prelim_flat_header.get('EXPOSURE'))
-                        if flat_exptime_val is not None:
-                            try:
-                                flat_exptime_float = float(flat_exptime_val)
-                                flat_dark_exp_key = str(flat_exptime_float).replace('.', 'p') + "s"
-                                dark_for_flat_path = master_dark_paths_state.get(flat_dark_exp_key)
-                                if not dark_for_flat_path and flat_dark_exp_key.endswith("s"):
-                                    dark_for_flat_path = master_dark_paths_state.get(flat_dark_exp_key[:-1])
+                        if prelim_flat_header:
+                            flat_exptime_val = prelim_flat_header.get('EXPTIME', prelim_flat_header.get('EXPOSURE'))
+                            if flat_exptime_val is not None:
+                                try:
+                                    flat_exptime_float = float(flat_exptime_val)
+                                    dark_for_flat_path = None
+                                    if master_dark_paths_state:
+                                        flat_dark_exp_key_s = str(flat_exptime_float).replace('.', 'p') + "s"
+                                        flat_dark_exp_key_no_s = str(flat_exptime_float).replace('.', 'p')
+                                        if flat_dark_exp_key_s in master_dark_paths_state: dark_for_flat_path = master_dark_paths_state[flat_dark_exp_key_s]
+                                        elif flat_dark_exp_key_no_s in master_dark_paths_state: dark_for_flat_path = master_dark_paths_state[flat_dark_exp_key_no_s]
 
-                                if dark_for_flat_path and os.path.exists(dark_for_flat_path):
-                                    dark_for_flat_data = load_fits_data(dark_for_flat_path)
-                                    if dark_for_flat_data is not None and dark_for_flat_data.shape == flat_cal_data.shape:
-                                        dark_for_flat_hdr = get_fits_header(dark_for_flat_path)
-                                        dark_for_flat_exp_val = dark_for_flat_hdr.get('EXPTIME',dark_for_flat_hdr.get('EXPOSURE')) if dark_for_flat_hdr else None
-                                        if dark_for_flat_exp_val is not None:
-                                            try:
-                                                dark_for_flat_exp_float = float(dark_for_flat_exp_val)
-                                                if dark_for_flat_exp_float > 0:
-                                                    s_factor = flat_exptime_float / dark_for_flat_exp_float
-                                                    flat_cal_data -= (dark_for_flat_data.astype(np.float32) * s_factor)
-                                                    status_messages.append(f"Subtracted scaled Master DARK ({os.path.basename(dark_for_flat_path)}, factor {s_factor:.3f}) from Prelim. {label}-FLAT.")
-                                                else: status_messages.append(f"Warn: Master DARK for Prelim. {label}-FLAT ({os.path.basename(dark_for_flat_path)}) has zero/neg EXPTIME. Applied unscaled."); flat_cal_data -= dark_for_flat_data.astype(np.float32)
-                                            except ValueError: status_messages.append(f"Warn: Could not parse EXPTIME for Master DARK for Prelim. {label}-FLAT. Applied unscaled."); flat_cal_data -= dark_for_flat_data.astype(np.float32)
-                                        else: status_messages.append(f"Warn: Master DARK for Prelim. {label}-FLAT missing EXPTIME. Applied unscaled."); flat_cal_data -= dark_for_flat_data.astype(np.float32)
-                                    else: status_messages.append(f"Warn: Failed/shape mismatch Master DARK for Prelim. {label}-FLAT. Dark not subtracted from flat.")
-                                else: status_messages.append(f"Warn: No matching Master DARK for Prelim. {label}-FLAT exp {flat_exptime_float}s. Dark not subtracted from flat.")
-                            except ValueError: status_messages.append(f"Warn: Could not parse EXPTIME for Prelim. {label}-FLAT. Dark not subtracted from flat.")
-                        else: status_messages.append(f"Warn: Prelim. {label}-FLAT missing EXPTIME. Dark not subtracted from flat.")
-                    else: status_messages.append(f"Warn: Could not read header for Prelim. {label}-FLAT. Dark not subtracted from flat.")
+                                    if dark_for_flat_path and os.path.exists(dark_for_flat_path):
+                                        dark_for_flat_data = load_fits_data(dark_for_flat_path)
+                                        if dark_for_flat_data is not None and dark_for_flat_data.shape == flat_cal_data.shape:
+                                            dark_for_flat_hdr = get_fits_header(dark_for_flat_path)
+                                            dark_for_flat_exp_val = dark_for_flat_hdr.get('EXPTIME',dark_for_flat_hdr.get('EXPOSURE')) if dark_for_flat_hdr else None
+                                            if dark_for_flat_exp_val is not None:
+                                                try:
+                                                    dark_for_flat_exp_float = float(dark_for_flat_exp_val)
+                                                    if dark_for_flat_exp_float > 0:
+                                                        s_factor = flat_exptime_float / dark_for_flat_exp_float
+                                                        flat_cal_data -= (dark_for_flat_data.astype(np.float32) * s_factor)
+                                                        status_messages.append(f"Subtracted scaled Master DARK ({os.path.basename(dark_for_flat_path)}, factor {s_factor:.3f}) from Prelim. {label}-FLAT.")
+                                                    else: status_messages.append(f"Warn: Master DARK for Prelim. {label}-FLAT ({os.path.basename(dark_for_flat_path)}) has zero/neg EXPTIME. Applied unscaled."); flat_cal_data -= dark_for_flat_data.astype(np.float32)
+                                                except ValueError: status_messages.append(f"Warn: Could not parse EXPTIME for Master DARK for Prelim. {label}-FLAT. Applied unscaled."); flat_cal_data -= dark_for_flat_data.astype(np.float32)
+                                            else: status_messages.append(f"Warn: Master DARK for Prelim. {label}-FLAT missing EXPTIME. Applied unscaled."); flat_cal_data -= dark_for_flat_data.astype(np.float32)
+                                        else: status_messages.append(f"Warn: Failed/shape mismatch Master DARK for Prelim. {label}-FLAT. Dark not subtracted from flat.")
+                                    else: status_messages.append(f"Warn: No matching Master DARK for Prelim. {label}-FLAT exp {flat_exptime_float}s. Dark not subtracted from flat.")
+                                except ValueError: status_messages.append(f"Warn: Could not parse EXPTIME for Prelim. {label}-FLAT. Dark not subtracted from flat.")
+                            else: status_messages.append(f"Warn: Prelim. {label}-FLAT missing EXPTIME. Dark not subtracted from flat.")
+                        else: status_messages.append(f"Warn: Could not read header for Prelim. {label}-FLAT. Dark not subtracted from flat.")
 
-                    median_flat_cal = np.median(flat_cal_data)
-                    if median_flat_cal == 0: raise ValueError(f"Median of processed Prelim. {label}-FLAT is zero.")
-                    final_flat_d = flat_cal_data / median_flat_cal
-                    final_flat_path_for_science = os.path.join(temp_dir, f"final_{label}_flat_{science_frame_filter_key}.fits")
-                    tmp_flat_h = get_fits_header(prelim_flat_p) if get_fits_header(prelim_flat_p) else fits.Header()
-                    tmp_flat_h['HISTORY'] = f'Final {label}-flat for Tab4'; save_fits_data(final_flat_path_for_science, final_flat_d, header=tmp_flat_h)
-                    status_messages.append(f"Temp final {label}-FLAT: {final_flat_path_for_science}")
-                elif master_bias_data_tab4 is None : status_messages.append(f"Warn: Master BIAS not available. {label}-frame not flat-fielded with full calibration.")
-                else: status_messages.append(f"Warn: Failed load Prelim {label}-FLAT. {label}-frame not flat-fielded.")
+                        median_flat_cal = np.median(flat_cal_data)
+                        if median_flat_cal == 0: raise ValueError(f"Median of processed Prelim. {label}-FLAT is zero.")
+                        final_flat_d = flat_cal_data / median_flat_cal
+                        temp_flat_generated_path = os.path.join(temp_dir_path, f"final_{label}_flat_{science_frame_filter_key}.fits")
+                        tmp_flat_h = get_fits_header(prelim_flat_p) if get_fits_header(prelim_flat_p) else fits.Header()
+                        tmp_flat_h['HISTORY'] = f'Final {label}-flat for Tab4'; save_fits_data(temp_flat_generated_path, final_flat_d, header=tmp_flat_h)
+                        final_flat_path_for_science = temp_flat_generated_path
+                        status_messages.append(f"Temp final {label}-FLAT: {os.path.basename(final_flat_path_for_science)}")
+                    elif master_bias_data_tab4 is None : status_messages.append(f"Warn: Master BIAS not available. {label}-frame not flat-fielded with full calibration.")
+                    else: status_messages.append(f"Warn: Failed load Prelim {label}-FLAT. {label}-frame not flat-fielded.")
             else: status_messages.append(f"Warn: Prelim {label}-FLAT for '{science_frame_filter_key}' not found. {label}-frame not flat-fielded.")
 
             base_n = os.path.splitext(os.path.basename(raw_path))[0]; corrected_p = os.path.join(calibrated_dir, f"{base_n}_cal_{label}.fits")
             if not correct_light_frame(raw_path, corrected_p, master_bias_path_state, actual_dark_for_light_path, final_flat_path_for_science):
                 raise ValueError(f"Failed to correct {label}-frame.")
-            status_messages.append(f"{label}-frame corrected: {corrected_p}"); _try_remove(final_flat_path_for_science) # remove temp final flat
+            status_messages.append(f"{label}-frame corrected: {os.path.basename(corrected_p)}");
+            # _try_remove(temp_flat_generated_path) # Keep for now, cleanup with temp_dir_obj
             return corrected_p
 
-        corrected_b_path = _correct_science_frame("B", raw_b_path, b_header, b_data_raw)
-        corrected_v_path = _correct_science_frame("V", raw_v_path, v_header, v_data_raw)
-        corrected_b_data = load_fits_data(corrected_b_path) if corrected_b_path else None
-        corrected_v_data = load_fits_data(corrected_v_path) if corrected_v_path else None
-        if corrected_b_data is None or corrected_v_data is None: raise ValueError("Failed to load corrected B or V frame.")
+        corrected_b_path = _correct_science_frame("B", raw_b_path, b_header)
+        corrected_v_path = _correct_science_frame("V", raw_v_path, v_header)
+        corrected_b_data = load_fits_data(corrected_b_path)
+        corrected_v_data = load_fits_data(corrected_v_path)
+        if corrected_b_data is None or corrected_v_data is None: raise ValueError("Failed to load corrected B or V frame data.")
 
         m0_B, m0_V = 25.0, 25.0; status_messages.append(f"Default m0_B={m0_B:.3f}, m0_V={m0_V:.3f}.")
         if tab4_std_star_file_obj and tab4_std_b_mag_str.strip() and tab4_std_v_mag_str.strip():
@@ -712,34 +741,34 @@ def handle_tab4_photometry(
                 std_filt = std_hdr_raw.get('FILTER',std_hdr_raw.get('FILTER1',std_hdr_raw.get('FILTNAME')));
                 if std_filt is None: raise ValueError("Std Star FITS missing FILTER.")
                 std_filt_key = str(std_filt).strip().upper()
-                corr_std_p = _correct_science_frame("STD",std_path,std_hdr_raw,load_fits_data(std_path)) # Pass data to avoid re-load
+                corr_std_p = _correct_science_frame("STD",std_path,std_hdr_raw)
                 if not corr_std_p: raise ValueError("Std star correction failed.")
                 corr_std_d = load_fits_data(corr_std_p);
                 if corr_std_d is None: raise ValueError("Failed load corrected std star data.")
-                mean_s,med_s,std_s_val=sigma_clipped_stats(corr_std_d,sigma=3.0) # Renamed std_s to std_s_val
+                mean_s,med_s,std_s_val=sigma_clipped_stats(corr_std_d,sigma=3.0)
                 dao_s=DAOStarFinder(fwhm=tab4_fwhm_input_val,threshold=5.*std_s_val)
                 srcs_s_tbl=dao_s(corr_std_d-med_s);
                 if not srcs_s_tbl or len(srcs_s_tbl)==0: raise ValueError("No sources in std star img.")
                 srcs_s_tbl.sort('flux',reverse=True); std_x,std_y=srcs_s_tbl[0]['xcentroid'],srcs_s_tbl[0]['ycentroid']
-                std_phot_res_list=perform_photometry(corr_std_d,[(std_x,std_y)], tab4_aperture_radius_input_val, tab4_sky_inner_input_val, tab4_sky_outer_input_val) # Changed var name
-                if not std_phot_res_list or 'instrumental_mag' not in std_phot_res_list[0] or std_phot_res_list[0]['instrumental_mag'] is None: raise ValueError("Photometry failed for std star.") # check list
+                std_phot_res_list=perform_photometry(corr_std_d,[(std_x,std_y)], tab4_aperture_radius_input_val, tab4_sky_inner_input_val, tab4_sky_outer_input_val)
+                if not std_phot_res_list or 'instrumental_mag' not in std_phot_res_list[0] or std_phot_res_list[0]['instrumental_mag'] is None: raise ValueError("Photometry failed for std star.")
                 instr_mag_s=std_phot_res_list[0]['instrumental_mag']; k_val=float(tab4_k_value_str.strip()) if tab4_k_value_str.strip() else 0.15
                 std_airmass=float(std_hdr_raw.get('AIRMASS',1.0))
                 if std_filt_key.startswith('B'): m0_B=std_b_known-instr_mag_s+(k_val*std_airmass); status_messages.append(f"Calib m0_B={m0_B:.3f}")
                 elif std_filt_key.startswith('V'): m0_V=std_v_known-instr_mag_s+(k_val*std_airmass); status_messages.append(f"Calib m0_V={m0_V:.3f}")
                 else: status_messages.append(f"Warn: Std star filt '{std_filt_key}' not B/V.")
-                _try_remove(corr_std_p)
+                # _try_remove(corr_std_p) # Let temp_dir_obj handle cleanup
             except Exception as e_std: status_messages.append(f"Std star error: {e_std}. Using default m0s.")
 
         srcs_b_tbl=None;
         if corrected_b_data is not None:
-            _,med_b,std_b_val=sigma_clipped_stats(corrected_b_data,sigma=3.0) # Renamed std_b
+            _,med_b,std_b_val=sigma_clipped_stats(corrected_b_data,sigma=3.0)
             daofind_b=DAOStarFinder(fwhm=tab4_fwhm_input_val,threshold=5.*std_b_val)
             srcs_b_tbl=daofind_b(corrected_b_data-med_b)
             status_messages.append(f"B-srcs: {len(srcs_b_tbl) if srcs_b_tbl else 0}")
         srcs_v_tbl=None;
         if corrected_v_data is not None:
-            _,med_v,std_v_val=sigma_clipped_stats(corrected_v_data,sigma=3.0) # Renamed std_v
+            _,med_v,std_v_val=sigma_clipped_stats(corrected_v_data,sigma=3.0)
             daofind_v=DAOStarFinder(fwhm=tab4_fwhm_input_val,threshold=5.*std_v_val)
             srcs_v_tbl=daofind_v(corrected_v_data-med_v)
             status_messages.append(f"V-srcs: {len(srcs_v_tbl) if srcs_v_tbl else 0}")
@@ -793,7 +822,7 @@ def handle_tab4_photometry(
             idx,d2d,_=sky_b.match_to_catalog_sky(sky_v); p_scale=abs(b_header.get('CDELT1',b_header.get('CD1_1',0.5))*3600); tol=match_r_px*p_scale*u.arcsec; v_matched_indices=set()
             for i,s_b in enumerate(phot_b):
                 e={'ID':i+1,'X_B':s_b.get('x'),'Y_B':s_b.get('y'),'RA_deg':s_b.get('ra_deg'),'Dec_deg':s_b.get('dec_deg'),'InstrMag_B':s_b.get('instrumental_mag'),'StdMag_B':s_b.get('StdMag_B'),'InstrMag_V':None,'StdMag_V':None,'B-V':None,'X_V':None,'Y_V':None}
-                if d2d[i]<=tol:
+                if idx[i] < len(phot_v) and d2d[i]<=tol : # Check idx bounds
                     m_v_idx=idx[i];
                     if m_v_idx not in v_matched_indices: s_v=phot_v[m_v_idx];e.update({'InstrMag_V':s_v.get('instrumental_mag'),'StdMag_V':s_v.get('StdMag_V'),'X_V':s_v.get('x'),'Y_V':s_v.get('y')});v_matched_indices.add(m_v_idx)
                 if e['StdMag_B'] is not None and e['StdMag_V'] is not None: e['B-V']=e['StdMag_B']-e['StdMag_V']
@@ -824,17 +853,19 @@ def handle_tab4_photometry(
             for star in matched_prev: lbl='Matched Source' if 'Matched Source' not in added_labels else None; plt.gca().add_patch(plt.Circle((star['x'],star['y']),10,color='lime',fill=False,alpha=0.7,label=lbl)); plt.text(star['x']+12,star['y']+12,str(star['id']),color='lime',fontsize=9); added_labels.add('Matched Source')
             handles, labels = plt.gca().get_legend_handles_labels()
             if handles: plt.legend(handles, labels)
-            prev_dir=os.path.join(calibrated_dir,"previews");os.makedirs(prev_dir,exist_ok=True);preview_image_path_for_ui=os.path.join(prev_dir,"tab4_b_preview.png")
-            plt.savefig(preview_image_path_for_ui);plt.close();status_messages.append(f"Preview: {preview_image_path_for_ui}")
+            preview_image_path_for_ui=os.path.join(previews_dir,f"tab4_b_preview_{time.strftime('%Y%m%d_%H%M%S')}.png")
+            plt.savefig(preview_image_path_for_ui);plt.close();status_messages.append(f"Preview: {os.path.basename(preview_image_path_for_ui)}")
         if results:
-            obj_name=b_header.get('OBJECT','UnknownObject').strip().replace(' ','_');csv_fn=f"{obj_name}_phot_results.csv";csv_p_temp=os.path.join(calibrated_dir,csv_fn)
-            final_results_df_for_ui.to_csv(csv_p_temp,index=False,float_format='%.3f');csv_file_path_for_ui=csv_p_temp;status_messages.append(f"CSV: {csv_file_path_for_ui}")
+            obj_name=b_header.get('OBJECT','UnknownObject').strip().replace(' ','_');csv_fn=f"{obj_name}_phot_results_{time.strftime('%Y%m%d_%H%M%S')}.csv";csv_file_path_for_ui=os.path.join(csv_output_dir,csv_fn)
+            final_results_df_for_ui.to_csv(csv_file_path_for_ui,index=False,float_format='%.3f');status_messages.append(f"CSV: {os.path.basename(csv_file_path_for_ui)}")
         status_messages.append("Tab 4 Analysis Completed.")
     except Exception as e_main: status_messages.append(f"CRITICAL ERROR Tab 4: {str(e_main)}"); final_results_df_for_ui=pd.DataFrame(columns=display_columns); preview_image_path_for_ui=None; csv_file_path_for_ui=None
+    finally:
+        if temp_dir_obj: temp_dir_obj.cleanup()
     return "\\n".join(status_messages),final_results_df_for_ui,preview_image_path_for_ui,csv_file_path_for_ui
 
 # Handler for Tab 5: H-R Diagram
-def handle_tab5_hr_diagram(csv_file_obj, object_name_str, request: gr.Request):
+def handle_tab5_hr_diagram(csv_file_obj, object_name_str): # Removed request: gr.Request
     if not csv_file_obj: return "Error: No CSV file uploaded.", None
     status_messages = ["Processing H-R Diagram..."]; hr_diagram_image_path = None
     try:
@@ -852,22 +883,23 @@ def handle_tab5_hr_diagram(csv_file_obj, object_name_str, request: gr.Request):
              obj_name_from_csv = str(df['OBJECT_NAME'].dropna().iloc[0]).strip()
         final_object_name = object_name_str.strip() if object_name_str and object_name_str.strip() else obj_name_from_csv
         if final_object_name: plot_title = f"{final_object_name} H-R Diagram"
-        preview_dir = os.path.join("calibrated_lights_output", "previews"); os.makedirs(preview_dir, exist_ok=True)
-        safe_title_part = "".join(c if c.isalnum() or c in ['_','-'] else '' for c in (final_object_name if final_object_name else "HR_Diagram")).replace(" ","_")
-        hr_diagram_image_path_val = os.path.join(preview_dir, f"{safe_title_part if safe_title_part else 'HR_Diagram'}.png")
 
-        # Pass bv_colors to the new colors_data parameter for colormapping
+        # Define output directory for H-R diagrams (user-facing)
+        hr_diagram_output_dir = os.path.join("calibrated_lights_output", "hr_diagrams")
+        os.makedirs(hr_diagram_output_dir, exist_ok=True)
+
+        safe_title_part = "".join(c if c.isalnum() or c in ['_','-'] else '' for c in (final_object_name if final_object_name else "HR_Diagram")).replace(" ","_")
+        hr_diagram_image_path_val = os.path.join(hr_diagram_output_dir, f"{safe_title_part if safe_title_part else 'HR_Diagram'}_{time.strftime('%Y%m%d_%H%M%S')}.png")
+
         if plot_hr_diagram(
             magnitudes=v_mags,
-            colors=bv_colors, # This is for the x-axis (Color Index)
-            colors_data=bv_colors, # This is for the colormap coloring of points
+            colors=bv_colors,
+            colors_data=bv_colors,
             output_image_path=hr_diagram_image_path_val,
             title=plot_title
-            # y_label default is "Magnitude", x_label default is "Color Index (e.g., B-V)"
-            # colormap default is 'RdYlBu_r', marker default is 'x' in updated function
         ):
-            status_messages.append(f"H-R Diagram generated: {hr_diagram_image_path_val}"); hr_diagram_image_path = hr_diagram_image_path_val
-        else: status_messages.append("Error: plot_hr_diagram function failed to generate H-R plot."); hr_diagram_image_path = None # Ensure it's None on failure
+            status_messages.append(f"H-R Diagram generated: {os.path.basename(hr_diagram_image_path_val)}"); hr_diagram_image_path = hr_diagram_image_path_val
+        else: status_messages.append("Error: plot_hr_diagram function failed to generate H-R plot."); hr_diagram_image_path = None
     except Exception as e: status_messages.append(f"Error during H-R diagram generation: {str(e)}"); hr_diagram_image_path = None
     return "\\n".join(status_messages), hr_diagram_image_path
 
@@ -910,7 +942,6 @@ with gr.Blocks() as astro_app:
             upload_master_flats.upload(fn=handle_upload_master_flats, inputs=[upload_master_flats, master_flat_paths_state], outputs=[tab1_status_display, master_flat_paths_state, download_master_flats_display])
 
         with gr.TabItem("LIGHT Frame Correction (Tab 2)"):
-            gr.Markdown("## Calibrate Raw LIGHT Frames")
             tab2_calibrated_files_summary_display = gr.Textbox(label="Calibrated Files List", interactive=False, lines=5, visible=False, elem_id="tab2_calibrated_list_txt")
             with gr.Row():
                 with gr.Column(scale=1):
@@ -920,10 +951,10 @@ with gr.Blocks() as astro_app:
                 with gr.Column(scale=2):
                     tab2_status_display = gr.Textbox(label="Calibration Status", interactive=False, lines=10, elem_id="tab2_status_disp")
             gr.Markdown("### Calibrated Image Preview (First Image)")
-            calibrated_light_preview = gr.Image(label="Calibrated LIGHT Frame Preview (PNG)", type="filepath", interactive=False, elem_id="tab2_preview_img", height=400, visible=False)
+            calibrated_light_preview = gr.Image(label="Calibrated LIGHT Frame Preview (PNG)", type="filepath", interactive=False, elem_id="tab2_preview_img", height=400, visible=True) # Set visible=True initially or handle via output
             gr.Markdown("### Download Calibrated LIGHT Frame (First Image)")
             download_calibrated_light = gr.File(label="Download Calibrated LIGHT Frame (FITS)", interactive=False, visible=False, elem_id="tab2_download_fits")
-            gr.Markdown("### List of All Calibrated Files")
+            # gr.Markdown("### List of All Calibrated Files") # This seems redundant if summary display is used.
             calibrate_lights_button.click(
                 fn=handle_calibrate_lights,
                 inputs=[light_frame_uploads, master_bias_path_state, master_dark_paths_state, master_flat_paths_state, stretch_options_dropdown],
@@ -943,9 +974,9 @@ with gr.Blocks() as astro_app:
             tab3_status_display = gr.Textbox(label="Processing Status / Errors", interactive=False, lines=8, elem_id="tab3_status_disp_extinction")
             gr.Markdown("### Results Plot & Data Table")
             with gr.Row():
-                tab3_plot_display = gr.Plot(label="Airmass vs. Magnitude Plot", visible=False, elem_id="tab3_extinction_plot")
+                tab3_plot_display = gr.Plot(label="Airmass vs. Magnitude Plot", visible=True, elem_id="tab3_extinction_plot") # Set visible=True or handle via output
             with gr.Row():
-                tab3_results_table = gr.DataFrame(label="Photometry & Airmass Data", visible=False, headers=["Filename", "Airmass", "Instrumental_Magnitude", "Raw_Flux", "Net_Flux", "X_cen", "Y_cen", "Skipped_Reason"], wrap=True, elem_id="tab3_extinction_table") # Removed max_rows and overflow_row_behaviour
+                tab3_results_table = gr.DataFrame(label="Photometry & Airmass Data", visible=True, headers=["Filename", "Airmass", "Instrumental_Magnitude", "Raw_Flux", "Net_Flux", "X_cen", "Y_cen", "Skipped_Reason"], wrap=True, elem_id="tab3_extinction_table")
 
             calculate_button_tab3.click(
                 fn=handle_tab3_extinction_from_fits,
@@ -991,11 +1022,11 @@ with gr.Blocks() as astro_app:
             with gr.Row():
                 with gr.Column(scale=2):
                     gr.Markdown("### Results Table")
-                    tab4_results_table = gr.DataFrame(label="Photometry Results", headers=["ID", "X_B", "Y_B", "RA_deg", "Dec_deg", "InstrMag_B", "InstrMag_V", "StdMag_B", "StdMag_V", "B-V"], interactive=False, wrap=True, elem_id="tab4_results_df") # Removed max_rows and overflow_row_behaviour
+                    tab4_results_table = gr.DataFrame(label="Photometry Results", headers=["ID", "X_B", "Y_B", "RA_deg", "Dec_deg", "InstrMag_B", "InstrMag_V", "StdMag_B", "StdMag_V", "B-V"], interactive=False, wrap=True, elem_id="tab4_results_df")
                     tab4_csv_download = gr.File(label="Download Results as CSV", interactive=False, visible=False, elem_id="tab4_csv_dl")
                 with gr.Column(scale=1):
                     gr.Markdown("### Preview (B-filter)")
-                    tab4_preview_image = gr.Image(label="B-filter Preview with Detections/ROI", type="filepath", interactive=False, height=400, visible=False, elem_id="tab4_preview_img_b")
+                    tab4_preview_image = gr.Image(label="B-filter Preview with Detections/ROI", type="filepath", interactive=False, height=400, visible=True, elem_id="tab4_preview_img_b") # Set visible=True
             tab4_status_display = gr.Textbox(label="Status / Errors", lines=5, interactive=False, elem_id="tab4_status_text")
             tab4_run_button.click(
                 fn=handle_tab4_photometry,
@@ -1020,7 +1051,7 @@ with gr.Blocks() as astro_app:
                     tab5_object_name_input = gr.Textbox(label="Object Name (for Diagram Title)", placeholder="e.g., M45, NGC1234, or from CSV if column exists", elem_id="tab5_obj_name")
                     tab5_plot_hr_button = gr.Button("Generate H-R Diagram", variant="primary", elem_id="tab5_plot_btn")
                 with gr.Column(scale=2):
-                    tab5_hr_diagram_display = gr.Image(label="H-R Diagram", type="filepath", interactive=False, height=500, elem_id="tab5_hr_img", visible=False)
+                    tab5_hr_diagram_display = gr.Image(label="H-R Diagram", type="filepath", interactive=False, height=500, elem_id="tab5_hr_img", visible=True) # Set visible=True
                     tab5_status_display = gr.Textbox(label="Status / Errors", lines=3, interactive=False, elem_id="tab5_hr_status")
             tab5_plot_hr_button.click(
                 fn=handle_tab5_hr_diagram,
