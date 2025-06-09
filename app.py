@@ -419,77 +419,77 @@ with gr.Blocks() as astro_app:
     with gr.Tabs():
         with gr.TabItem("Master Frame Generation (Tab 1)"):
             master_bias_path_state = gr.State(None)
-master_dark_paths_state = gr.State({})
-master_flat_paths_state = gr.State({})
+            master_dark_paths_state = gr.State({})
+            master_flat_paths_state = gr.State({})
 
             gr.Markdown("## Create Master Calibration Frames or Upload Existing Ones")
 
-                        with gr.Row():
-                            with gr.Column(scale=2):
-                                gr.Markdown("### Option 1: Generate Master Frames from Raw Files")
-                                bias_uploads = gr.Files(label="Upload BIAS Frames (FITS)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab1_bias_uploads")
-                                dark_uploads = gr.Files(label="Upload DARK Frames (FITS)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab1_dark_uploads")
-                                flat_uploads = gr.Files(label="Upload FLAT Frames (FITS)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab1_flat_uploads")
+            with gr.Row():
+                with gr.Column(scale=2):
+                    gr.Markdown("### Option 1: Generate Master Frames from Raw Files")
+                    bias_uploads = gr.Files(label="Upload BIAS Frames (FITS)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab1_bias_uploads")
+                    dark_uploads = gr.Files(label="Upload DARK Frames (FITS)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab1_dark_uploads")
+                    flat_uploads = gr.Files(label="Upload FLAT Frames (FITS)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab1_flat_uploads")
 
-                                with gr.Row():
-                                    generate_master_bias_button = gr.Button("Generate Master BIAS", elem_id="tab1_gen_mbias_btn")
-                                    generate_master_dark_button = gr.Button("Generate Master DARKs", elem_id="tab1_gen_mdark_btn")
-                                    generate_master_flat_button = gr.Button("Generate Prelim. Master FLATs", elem_id="tab1_gen_mflat_btn")
+                    with gr.Row():
+                        generate_master_bias_button = gr.Button("Generate Master BIAS", elem_id="tab1_gen_mbias_btn")
+                        generate_master_dark_button = gr.Button("Generate Master DARKs", elem_id="tab1_gen_mdark_btn")
+                        generate_master_flat_button = gr.Button("Generate Prelim. Master FLATs", elem_id="tab1_gen_mflat_btn")
 
-                            with gr.Column(scale=1):
-                                gr.Markdown("### Option 2: Upload Existing Master Frames")
-                                upload_master_bias = gr.File(label="Upload Master BIAS (FITS)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab1_upload_mbias")
-                                upload_master_darks = gr.Files(label="Upload Master DARKs (FITS, one per exposure)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab1_upload_mdarks")
-                                upload_master_flats = gr.Files(label="Upload Prelim. Master FLATs (FITS, one per filter)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab1_upload_mflats")
+                with gr.Column(scale=1):
+                    gr.Markdown("### Option 2: Upload Existing Master Frames")
+                    upload_master_bias = gr.File(label="Upload Master BIAS (FITS)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab1_upload_mbias")
+                    upload_master_darks = gr.Files(label="Upload Master DARKs (FITS, one per exposure)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab1_upload_mdarks")
+                    upload_master_flats = gr.Files(label="Upload Prelim. Master FLATs (FITS, one per filter)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab1_upload_mflats")
 
-                        gr.Markdown("### Processing Status & Results")
-                        tab1_status_display = gr.Textbox(label="Status", interactive=False, lines=5, elem_id="tab1_status_disp")
+            gr.Markdown("### Processing Status & Results")
+            tab1_status_display = gr.Textbox(label="Status", interactive=False, lines=5, elem_id="tab1_status_disp")
 
-                        with gr.Row():
+            with gr.Row():
                             # These will be updated to be File components for download later
                             download_master_bias = gr.File(label="Download Master BIAS", interactive=False, visible=False, elem_id="tab1_dl_mbias") # Placeholder
                             download_master_darks_display = gr.Textbox(label="Generated Master DARK Paths", interactive=False, visible=False, lines=3, elem_id="tab1_dl_mdarks_txt") # Placeholder
                             download_master_flats_display = gr.Textbox(label="Generated Prelim. Master FLAT Paths", interactive=False, visible=False, lines=3, elem_id="tab1_dl_mflats_txt") # Placeholder
 
-                        # Connect buttons to handlers
-                        generate_master_bias_button.click(fn=handle_generate_master_bias, inputs=[bias_uploads, master_bias_path_state], outputs=[tab1_status_display, master_bias_path_state, download_master_bias])
-                        generate_master_dark_button.click(fn=handle_generate_master_dark, inputs=[dark_uploads, master_bias_path_state, master_dark_paths_state], outputs=[tab1_status_display, master_dark_paths_state, download_master_darks_display])
-                        generate_master_flat_button.click(fn=handle_generate_master_flat, inputs=[flat_uploads, master_flat_paths_state], outputs=[tab1_status_display, master_flat_paths_state, download_master_flats_display])
+            # Connect buttons to handlers
+            generate_master_bias_button.click(fn=handle_generate_master_bias, inputs=[bias_uploads, master_bias_path_state], outputs=[tab1_status_display, master_bias_path_state, download_master_bias])
+            generate_master_dark_button.click(fn=handle_generate_master_dark, inputs=[dark_uploads, master_bias_path_state, master_dark_paths_state], outputs=[tab1_status_display, master_dark_paths_state, download_master_darks_display])
+            generate_master_flat_button.click(fn=handle_generate_master_flat, inputs=[flat_uploads, master_flat_paths_state], outputs=[tab1_status_display, master_flat_paths_state, download_master_flats_display])
 
-                        upload_master_bias.upload(fn=handle_upload_master_bias, inputs=[upload_master_bias, master_bias_path_state], outputs=[tab1_status_display, master_bias_path_state, download_master_bias])
-                        upload_master_darks.upload(fn=handle_upload_master_darks, inputs=[upload_master_darks, master_dark_paths_state], outputs=[tab1_status_display, master_dark_paths_state, download_master_darks_display])
-                        upload_master_flats.upload(fn=handle_upload_master_flats, inputs=[upload_master_flats, master_flat_paths_state], outputs=[tab1_status_display, master_flat_paths_state, download_master_flats_display])
+            upload_master_bias.upload(fn=handle_upload_master_bias, inputs=[upload_master_bias, master_bias_path_state], outputs=[tab1_status_display, master_bias_path_state, download_master_bias])
+            upload_master_darks.upload(fn=handle_upload_master_darks, inputs=[upload_master_darks, master_dark_paths_state], outputs=[tab1_status_display, master_dark_paths_state, download_master_darks_display])
+            upload_master_flats.upload(fn=handle_upload_master_flats, inputs=[upload_master_flats, master_flat_paths_state], outputs=[tab1_status_display, master_flat_paths_state, download_master_flats_display])
             # TODO: Add UI components for Tab 1
 
         with gr.TabItem("LIGHT Frame Correction (Tab 2)"):
             gr.Markdown("## Calibrate Raw LIGHT Frames")
 
-                        with gr.Row():
-                            with gr.Column(scale=1):
-                                light_frame_uploads = gr.Files(label="Upload Raw LIGHT Frames (FITS)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab2_light_uploads")
-                                # Assuming master_bias_path_state, master_dark_paths_state, master_flat_paths_state are accessible
-                                # from the parent gr.Blocks() context where they are defined (in Tab 1).
-                                calibrate_lights_button = gr.Button("Calibrate Uploaded LIGHT Frames", elem_id="tab2_calibrate_btn")
+            with gr.Row():
+                with gr.Column(scale=1):
+                    light_frame_uploads = gr.Files(label="Upload Raw LIGHT Frames (FITS)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab2_light_uploads")
+                    # Assuming master_bias_path_state, master_dark_paths_state, master_flat_paths_state are accessible
+                    # from the parent gr.Blocks() context where they are defined (in Tab 1).
+                    calibrate_lights_button = gr.Button("Calibrate Uploaded LIGHT Frames", elem_id="tab2_calibrate_btn")
 
-                            with gr.Column(scale=2):
-                                tab2_status_display = gr.Textbox(label="Calibration Status", interactive=False, lines=10, elem_id="tab2_status_disp") # Increased lines
+                with gr.Column(scale=2):
+                    tab2_status_display = gr.Textbox(label="Calibration Status", interactive=False, lines=10, elem_id="tab2_status_disp") # Increased lines
 
-                        gr.Markdown("### Calibrated Image Preview") # Singular for now
-                        # Output for a single image preview (e.g., the first calibrated image)
-                        calibrated_light_preview = gr.Image(label="Calibrated LIGHT Frame Preview (PNG)", type="filepath", interactive=False, elem_id="tab2_preview_img", height=400, visible=False)
+            gr.Markdown("### Calibrated Image Preview") # Singular for now
+            # Output for a single image preview (e.g., the first calibrated image)
+            calibrated_light_preview = gr.Image(label="Calibrated LIGHT Frame Preview (PNG)", type="filepath", interactive=False, elem_id="tab2_preview_img", height=400, visible=False)
 
-                        gr.Markdown("### Download Calibrated LIGHT Frame") # Singular for now
-                        # Output for downloading a single calibrated FITS file (e.g., the first one, or a ZIP if multiple)
-                        download_calibrated_light = gr.File(label="Download Calibrated LIGHT Frame (FITS)", interactive=False, visible=False, elem_id="tab2_download_fits")
+            gr.Markdown("### Download Calibrated LIGHT Frame") # Singular for now
+            # Output for downloading a single calibrated FITS file (e.g., the first one, or a ZIP if multiple)
+            download_calibrated_light = gr.File(label="Download Calibrated LIGHT Frame (FITS)", interactive=False, visible=False, elem_id="tab2_download_fits")
 
-                        # Connect button to handler
-                        # The request object is implicitly passed if the handler includes it in its signature.
-                        # Gradio checks the handler's signature.
-                        calibrate_lights_button.click(
-                            fn=handle_calibrate_lights,
-                            inputs=[light_frame_uploads, master_bias_path_state, master_dark_paths_state, master_flat_paths_state],
-                            outputs=[tab2_status_display, calibrated_light_preview, download_calibrated_light]
-                        )
+            # Connect button to handler
+            # The request object is implicitly passed if the handler includes it in its signature.
+            # Gradio checks the handler's signature.
+            calibrate_lights_button.click(
+                fn=handle_calibrate_lights,
+                inputs=[light_frame_uploads, master_bias_path_state, master_dark_paths_state, master_flat_paths_state],
+                outputs=[tab2_status_display, calibrated_light_preview, download_calibrated_light]
+            )
             # TODO: Add UI components for Tab 2
 
         with gr.TabItem("Extinction Coefficient (Tab 3)"):
