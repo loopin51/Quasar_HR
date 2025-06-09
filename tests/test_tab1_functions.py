@@ -87,6 +87,31 @@ class TestMasterFrameCreation(unittest.TestCase):
         self.assertEqual(master_header.get("COMBTYPE"), "MEAN")
         self.assertEqual(master_header.get("FRAMTYPE"), "DARK")
 
+    def test_create_master_bias_average(self):
+        """Test creating a master BIAS using 'average' (mean) combination."""
+        data1 = np.full((7, 7), 50.0, dtype=np.float32)
+        data2 = np.full((7, 7), 60.0, dtype=np.float32)
+        data3 = np.full((7, 7), 70.0, dtype=np.float32)
+        self._create_dummy_fits_file("bias_avg1", data1)
+        self._create_dummy_fits_file("bias_avg2", data2)
+        self._create_dummy_fits_file("bias_avg3", data3)
+
+        success = create_master_frame(self.input_files, self.output_path, method="average", frame_type="BIAS_AVG")
+        self.assertTrue(success, "create_master_frame should succeed with 'average' method.")
+        self.assertTrue(os.path.exists(self.output_path), "Output master BIAS_AVG file should be created.")
+
+        master_data = load_fits_data(self.output_path)
+        self.assertIsNotNone(master_data)
+
+        expected_average_data = np.mean(np.stack([data1, data2, data3], axis=0), axis=0)
+        self.assertTrue(np.allclose(master_data, expected_average_data), "Master BIAS_AVG data is not the average of inputs.")
+
+        master_header = get_fits_header(self.output_path)
+        self.assertIsNotNone(master_header)
+        self.assertEqual(master_header.get("NCOMBINE"), 3)
+        self.assertEqual(master_header.get("COMBTYPE"), "AVERAGE") # Check if method string is stored as uppercase
+        self.assertEqual(master_header.get("FRAMTYPE"), "BIAS_AVG")
+
     def test_create_master_flat_sigma_clip_mean(self):
         """Test creating a master FLAT using sigma_clip_mean combination."""
         # Create data with an outlier
@@ -180,6 +205,15 @@ class TestMasterFrameCreation(unittest.TestCase):
 
         success = create_master_frame(self.input_files, self.output_path, method="unsupported_method", frame_type="BIAS")
         self.assertFalse(success, "Should return False for an unknown combination method.")
+        self.assertFalse(os.path.exists(self.output_path))
+
+    def test_unknown_method_actually_unknown(self):
+        """Test that a truly unsupported method still fails after adding 'average'."""
+        data1 = np.full((10, 10), 100, dtype=np.float32)
+        self._create_dummy_fits_file("bias_unknown_method", data1)
+
+        success = create_master_frame(self.input_files, self.output_path, method="nonexistent_method", frame_type="BIAS")
+        self.assertFalse(success, "Should return False for a truly non-existent combination method.")
         self.assertFalse(os.path.exists(self.output_path))
 
 if __name__ == '__main__':

@@ -60,7 +60,7 @@ def create_master_frame(file_paths: list[str], output_path: str, method: str = "
     master_image = None
     if method.lower() == "median":
         master_image = np.median(image_stack, axis=0)
-    elif method.lower() == "mean":
+    elif method.lower() == "mean" or method.lower() == "average": # Added "average" as alias for mean
         master_image = np.mean(image_stack, axis=0)
     elif method.lower() == "sigma_clip_mean":
         # sigma_clipped_stats returns mean, median, stddev of the sigma-clipped data
@@ -73,7 +73,7 @@ def create_master_frame(file_paths: list[str], output_path: str, method: str = "
         master_image = mean # Using the mean of the sigma-clipped data
         print(f"Sigma clipping applied (stdfunc=mad_std). Original median: {np.median(image_stack, axis=0)[0,0]}, Clipped mean: {master_image[0,0]}")
     else:
-        print(f"Error: Unknown combination method '{method}'. Supported methods are 'median', 'mean', 'sigma_clip_mean'.")
+        print(f"Error: Unknown combination method '{method}'. Supported methods are 'median', 'mean', 'average', 'sigma_clip_mean'.") # Added average to error message
         return False
 
     if master_image is None:
