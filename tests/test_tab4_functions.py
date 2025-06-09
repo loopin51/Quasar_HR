@@ -180,3 +180,76 @@ class TestPhotometry(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestPerformPhotometrySEP(unittest.TestCase):
+    def setUp(self):
+        # Create dummy FITS file
+        image_data = np.zeros((100, 100), dtype=np.float32)
+        # Add stars with enough separation to avoid overlap issues with typical aperture sizes
+        # Star 1: center (25,25), region [23:28, 23:28] to make it 5x5
+        image_data[23:28, 23:28] = 500.0
+        # Star 2: center (75,75), region [73:78, 73:78] to make it 5x5
+        image_data[73:78, 73:78] = 1000.0
+
+        self.fits_path = os.path.join(os.path.dirname(__file__), 'dummy_test_image.fits') # Ensure it's created in the test directory
+
+        # Add a slight background noise to make it more realistic for SEP
+        # and to ensure background subtraction is non-trivial.
+        rng = np.random.default_rng(seed=42) # for reproducibility
+        image_data += rng.normal(loc=5.0, scale=1.0, size=image_data.shape).astype(np.float32)
+
+        hdu = fits.PrimaryHDU(data=image_data)
+        hdul = fits.HDUList([hdu])
+        hdul.writeto(self.fits_path, overwrite=True)
+
+    def tearDown(self):
+        if os.path.exists(self.fits_path):
+            os.remove(self.fits_path)
+
+    def test_perform_photometry_sep_basic(self):
+        # This import needs to be valid in the context of the test execution.
+        # sys.path has already been modified at the top of this file.
+        from tab4_functions import perform_photometry_sep
+
+        # Adjust aperture_radius and extract_thresh based on dummy image characteristics
+        # Star flux is concentrated, background is ~5.0. A 3x3 region sum for star 1 is ~500*9 = 4500.
+        # A threshold of 5-sigma over background noise (stddev=1) should easily pick them up.
+        # SEP's threshold is applied to data - background.
+        results = perform_photometry_sep(self.fits_path, aperture_radius=3.0, extract_thresh=5.0)
+
+        self.assertIsNotNone(results, "perform_photometry_sep should return a list or None, not raise an error here.")
+        self.assertIsInstance(results, list, "Results should be a list.")
+
+        # Depending on SEP's sensitivity and the exact nature of the dummy image (noise, peak values),
+        # the number of detected sources might vary. For the two distinct bright sources, we expect 2.
+        # If more are found (e.g., noise peaks), this assertion might need refinement or the dummy image made cleaner.
+        self.assertEqual(len(results), 2, f"Should detect 2 sources, but found {len(results)}. Results: {results}")
+
+        expected_keys = ['x', 'y', 'flux', 'fluxerr', 'magnitude', 'sep_flags']
+        for res in results:
+            for key in expected_keys:
+                self.assertIn(key, res, f"Key '{key}' missing in result dictionary.")
+            self.assertIsNotNone(res['x'], "Source 'x' coordinate should not be None.")
+            self.assertIsNotNone(res['y'], "Source 'y' coordinate should not be None.")
+            self.assertGreater(res['flux'], 0, "Flux should be positive for detected astronomical sources.")
+            self.assertIsNotNone(res['magnitude'], "Magnitude should be calculated for positive flux.")
+            # Check if source positions are reasonable (e.g. near 25,25 and 75,75)
+            # SEP's x,y are 0-indexed and can be float values representing centroids.
+            # Allow some tolerance for centroiding.
+            is_star1 = np.allclose([res['x'], res['y']], [25, 25], atol=3) # Increased tolerance
+            is_star2 = np.allclose([res['x'], res['y']], [75, 75], atol=3) # Increased tolerance
+            self.assertTrue(is_star1 or is_star2, f"Detected source at ({res['x']},{res['y']}) is not near expected positions.")
+
+    def test_perform_photometry_sep_no_sources_found(self):
+        from tab4_functions import perform_photometry_sep
+        # Use a very high threshold that should not find any sources
+        results = perform_photometry_sep(self.fits_path, aperture_radius=3.0, extract_thresh=1000.0)
+        self.assertIsNotNone(results)
+        self.assertIsInstance(results, list)
+        self.assertEqual(len(results), 0, "Should find 0 sources with a very high threshold.")
+
+    def test_perform_photometry_sep_invalid_fits_path(self):
+        from tab4_functions import perform_photometry_sep
+        results = perform_photometry_sep("non_existent_dummy_image.fits", aperture_radius=3.0, extract_thresh=1.5)
+        self.assertIsNone(results, "Should return None for an invalid FITS path.")
