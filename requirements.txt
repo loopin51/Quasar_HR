@@ -1,3 +1,8 @@
-sep
-astropy
-numpy
+gradio==5.33.0
+numpy==2.2.6
+astropy==6.1.7
+scipy==1.15.3
+matplotlib==3.10.3
+pandas==2.3.0
+photutils==2.0.2
+sep==1.4.1

@@ -243,8 +243,11 @@ class TestPerformPhotometrySEP(unittest.TestCase):
 
     def test_perform_photometry_sep_no_sources_found(self):
         from tab4_functions import perform_photometry_sep
-        # Use a very high threshold that should not find any sources
-        results = perform_photometry_sep(self.fits_path, aperture_radius=3.0, extract_thresh=1000.0)
+        # Use a very high threshold that should not find any sources.
+        # Given peak of brightest star is ~1000 and globalrms is ~1,
+        # threshold needs to be > 1000 / globalrms.
+        # Setting to 1500.0 ensures it's well above.
+        results = perform_photometry_sep(self.fits_path, aperture_radius=3.0, extract_thresh=1500.0)
         self.assertIsNotNone(results)
         self.assertIsInstance(results, list)
         self.assertEqual(len(results), 0, "Should find 0 sources with a very high threshold.")
