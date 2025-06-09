@@ -11,23 +11,24 @@ def plot_hr_diagram(
     output_image_path: str,
     title: str = "H-R Diagram",
     x_label: str = "Color Index (e.g., B-V)",
-    y_label: str = "Absolute Magnitude",
-    point_color: str = 'blue',
-    point_size: int = 10
+    y_label: str = "Magnitude", # Changed from Absolute Magnitude to be more general
+    colors_data: list[float] | np.ndarray | None = None, # New parameter for B-V values for colormap
+    colormap: str = 'RdYlBu_r', # Default colormap
+    point_size: int = 20 # Increased default point size for 'x' markers
 ) -> bool:
     """
     Generates and saves an H-R diagram.
 
     Args:
-        magnitudes: A list or NumPy array of magnitudes (apparent or absolute).
-                    Brighter objects have smaller magnitude values.
-        colors: A list or NumPy array of color indices (e.g., B-V).
-                Should be the same length as magnitudes.
-        output_image_path: Path to save the generated H-R diagram image (e.g., "hr_diagram.png").
+        magnitudes: A list or NumPy array of magnitudes.
+        colors: A list or NumPy array of color indices for the x-axis (e.g., B-V).
+        output_image_path: Path to save the generated H-R diagram image.
         title: Optional title for the plot.
-        x_label: Optional label for the x-axis (color index).
-        y_label: Optional label for the y-axis (magnitude).
-        point_color: Optional color for the scatter plot points.
+        x_label: Optional label for the x-axis.
+        y_label: Optional label for the y-axis.
+        colors_data: Optional list/array of numerical values (e.g., B-V again, or other property)
+                     to map to the colormap for scatter points. If None, points are single color.
+        colormap: Optional name of the matplotlib colormap to use if colors_data is provided.
         point_size: Optional size for the scatter plot points.
 
     Returns:
@@ -59,7 +60,19 @@ def plot_hr_diagram(
 
     fig, ax = plt.subplots(figsize=(8, 6)) # Create a new figure and axes
 
-    ax.scatter(colors_arr, magnitudes_arr, s=point_size, c=point_color, alpha=0.7, edgecolors='none')
+    scatter_plot = ax.scatter(
+        colors_arr,
+        magnitudes_arr,
+        s=point_size,
+        c=colors_data if colors_data is not None else 'blue', # Use colors_data if provided
+        cmap=colormap if colors_data is not None else None,
+        marker='x', # Changed marker to 'x'
+        alpha=0.7,
+        edgecolors='none' if colors_data is not None else 'grey' # Add edgecolors for single-color case
+    )
+
+    if colors_data is not None:
+        cbar = fig.colorbar(scatter_plot, ax=ax, label="B-V Color Index") # Add colorbar
 
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)

@@ -29,33 +29,48 @@ def perform_photometry_sep(fits_file_path: str, aperture_radius: float, extract_
         print(f"Error: Could not load image data from {fits_file_path}.")
         return None
 
-    # Ensure data is float32 or float64 and handle non-finite values
-    if data.dtype.name not in ['float32', 'float64']:
-        data = data.astype(np.float32) # Or np.float64
+    # Ensure data is a numpy array and standardize to float64 for SEP
+    if not isinstance(data, np.ndarray):
+        data = np.array(data, dtype=np.float64)
+    else:
+        # Ensure it's float64. copy=False avoids unnecessary copy if already float64.
+        data = data.astype(np.float64, copy=False)
 
+    # Handle non-finite values by replacing them.
+    # Using 0.0 is a simple approach; a median might be better if appropriate for the data.
     data[~np.isfinite(data)] = 0.0
 
     try:
-        # Estimate background
-        # SEP requires byte-swapped data if not native endian
-        if not data.isnative:
-            data = data.byteswap(inplace=True).newbyteorder()
+        # Ensure data is C-contiguous and in native byte order for SEP.
+        # SEP internally handles byte swapping if data.isnative is False,
+        # but it must be C-contiguous.
+        data = np.ascontiguousarray(data) # Ensures C-contiguity. Already float64.
 
-        bkg = sep.Background(data)
+        # The explicit byteswap can sometimes be necessary if SEP's internal
+        # handling isn't triggered or is insufficient.
+        # However, SEP docs suggest it handles non-native byte order.
+        # Let's rely on SEP's internal handling first after ensuring C-contiguity and float64 type.
+        # if not data.isnative:
+        #     data = data.byteswap(inplace=False).newbyteorder()
+
+        bkg = sep.Background(data) # data is C-contiguous float64 at this point
 
         # Subtract background
         data_sub = data - bkg.back()
 
         # Extract sources
-        objects = sep.extract(data_sub, thresh=extract_thresh, err=bkg.rms())
+        # Using bkg.globalrms for err is a common practice with SEP
+        objects = sep.extract(data_sub, thresh=extract_thresh, err=bkg.globalrms)
 
         if len(objects) == 0:
-            print(f"No sources found with extraction threshold {extract_thresh} sigma.")
+            # This print is fine for operational feedback if desired, or can be removed for cleaner logs
+            # print(f"No sources found with extraction threshold {extract_thresh} sigma and effective threshold {extract_thresh * bkg.globalrms}.")
             return []
 
         # Perform aperture photometry
+        # Use bkg.globalrms for error estimation in photometry as well, consistent with extraction
         flux, fluxerr, flag = sep.sum_circle(data_sub, objects['x'], objects['y'],
-                                             aperture_radius, err=bkg.rms(), gain=1.0)
+                                             aperture_radius, err=bkg.globalrms, gain=1.0)
 
         # Calculate instrumental magnitudes
         # Using a placeholder zero_point of 25.0
