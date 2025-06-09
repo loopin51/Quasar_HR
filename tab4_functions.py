@@ -6,6 +6,85 @@ from photutils.aperture import CircularAperture, CircularAnnulus, ApertureStats
 from photutils.background import Background2D, MedianBackground
 from utils import load_fits_data # Assuming utils.py is in PYTHONPATH
 import math
+import sep # Added import
+import numpy as np # Added import, though already present, ensure it's used as np
+
+def perform_photometry_sep(fits_file_path: str, aperture_radius: float, extract_thresh: float) -> list[dict] | None:
+    """
+    Performs source extraction and aperture photometry using SEP.
+
+    Args:
+        fits_file_path: Path to the FITS image file.
+        aperture_radius: Radius of the circular aperture for photometry in pixels.
+        extract_thresh: Threshold for source extraction in sigma over background.
+
+    Returns:
+        A list of dictionaries, where each dictionary contains photometry results
+        for a detected source (e.g., 'x', 'y', 'flux', 'fluxerr', 'magnitude').
+        Returns None if the image cannot be loaded or an error occurs.
+        Returns an empty list if no sources are found.
+    """
+    data = load_fits_data(fits_file_path)
+    if data is None:
+        print(f"Error: Could not load image data from {fits_file_path}.")
+        return None
+
+    # Ensure data is float32 or float64 and handle non-finite values
+    if data.dtype.name not in ['float32', 'float64']:
+        data = data.astype(np.float32) # Or np.float64
+
+    data[~np.isfinite(data)] = 0.0
+
+    try:
+        # Estimate background
+        # SEP requires byte-swapped data if not native endian
+        if not data.isnative:
+            data = data.byteswap(inplace=True).newbyteorder()
+
+        bkg = sep.Background(data)
+
+        # Subtract background
+        data_sub = data - bkg.back()
+
+        # Extract sources
+        objects = sep.extract(data_sub, thresh=extract_thresh, err=bkg.rms())
+
+        if len(objects) == 0:
+            print(f"No sources found with extraction threshold {extract_thresh} sigma.")
+            return []
+
+        # Perform aperture photometry
+        flux, fluxerr, flag = sep.sum_circle(data_sub, objects['x'], objects['y'],
+                                             aperture_radius, err=bkg.rms(), gain=1.0)
+
+        # Calculate instrumental magnitudes
+        # Using a placeholder zero_point of 25.0
+        # Filter out non-positive fluxes before log10
+        valid_flux_indices = flux > 0
+        magnitudes = np.full_like(flux, np.nan) # Initialize with NaNs
+        magnitudes[valid_flux_indices] = -2.5 * np.log10(flux[valid_flux_indices]) + 25.0
+
+        photometry_results = []
+        for i in range(len(objects)):
+            photometry_results.append({
+                'x': objects['x'][i],
+                'y': objects['y'][i],
+                'flux': flux[i],
+                'fluxerr': fluxerr[i],
+                'magnitude': magnitudes[i] if valid_flux_indices[i] else None,
+                'sep_flags': flag[i] # Include SEP flags for diagnostics
+            })
+
+        return photometry_results
+
+    except Exception as e:
+        print(f"An error occurred during SEP photometry: {e}")
+        # SEP can raise various errors, including MemoryError for large data/many sources
+        # or specific SEP operational errors.
+        # It's good to print the error to understand what went wrong.
+        # Consider logging this error in a real application.
+        return None
+
 
 def perform_photometry(
     fits_file_path: str,
