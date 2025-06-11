@@ -108,8 +108,9 @@ def handle_generate_master_dark(dark_uploads_list, master_bias_path, current_mas
     final_status = "\\n".join(status_messages) if status_messages else "Processing completed."
     if not new_master_dark_paths and not status_messages: final_status += "\\nNo Master DARKs generated."
     elif not new_master_dark_paths: final_status += "\\nNo Master DARKs were successfully generated."
-    dark_paths_display_text = "Generated Master DARKs:\\n" + "\\n".join([f"{exp}: {p}" for exp, p in new_master_dark_paths.items()])
-    return final_status, new_master_dark_paths, gr.Textbox(value=dark_paths_display_text, label="Generated Master DARK Paths", visible=True, interactive=False)
+    # dark_paths_display_text = "Generated Master DARKs:\\n" + "\\n".join([f"{exp}: {p}" for exp, p in new_master_dark_paths.items()])
+    dark_file_paths_list = list(new_master_dark_paths.values()) if new_master_dark_paths else []
+    return final_status, new_master_dark_paths, gr.Files(value=dark_file_paths_list, visible=len(dark_file_paths_list) > 0)
 
 # --- Handler for Tab 1: Master FLATs ---
 def handle_generate_master_flat(flat_uploads_list, current_master_flat_paths_state):
@@ -139,8 +140,9 @@ def handle_generate_master_flat(flat_uploads_list, current_master_flat_paths_sta
     final_status = "\\n".join(status_messages) if status_messages else "Flat processing completed."
     if not new_master_flat_paths and not status_messages: final_status = "No Prelim Master FLATs generated or no valid flats."
     elif not new_master_flat_paths: final_status += "\\nNo Prelim Master FLATs successfully generated."
-    flat_paths_display_text = "Generated Prelim. Master FLATs:\\n" + "\\n".join([f"{filt}: {p}" for filt, p in new_master_flat_paths.items()])
-    return final_status, new_master_flat_paths, gr.Textbox(value=flat_paths_display_text, label="Generated Prelim. Master FLAT Paths", visible=True, interactive=False)
+    # flat_paths_display_text = "Generated Prelim. Master FLATs:\\n" + "\\n".join([f"{filt}: {p}" for filt, p in new_master_flat_paths.items()])
+    flat_file_paths_list = list(new_master_flat_paths.values()) if new_master_flat_paths else []
+    return final_status, new_master_flat_paths, gr.Files(value=flat_file_paths_list, visible=len(flat_file_paths_list) > 0)
 
 # --- Handlers for Uploading Master Frames (Tab 1) ---
 def handle_upload_master_bias(uploaded_master_bias_file_obj, current_master_bias_path_state):
@@ -174,8 +176,9 @@ def handle_upload_master_darks(uploaded_master_darks_list, current_master_dark_p
     if not new_master_dark_paths and status_messages: final_status = "\\n".join(status_messages)
     elif not new_master_dark_paths and not status_messages: final_status = "No dark files processed."
     elif not status_messages and new_master_dark_paths: final_status = "All darks uploaded."
-    dark_paths_display_text = "Uploaded/Updated Master DARKs:\\n" + "\\n".join([f"{exp}: {p}" for exp, p in new_master_dark_paths.items()])
-    return final_status, new_master_dark_paths, gr.Textbox(value=dark_paths_display_text, label="Uploaded Master DARK Paths", visible=True, interactive=False)
+    # dark_paths_display_text = "Uploaded/Updated Master DARKs:\\n" + "\\n".join([f"{exp}: {p}" for exp, p in new_master_dark_paths.items()])
+    dark_file_paths_list = list(new_master_dark_paths.values()) if new_master_dark_paths else []
+    return final_status, new_master_dark_paths, gr.Files(value=dark_file_paths_list, visible=len(dark_file_paths_list) > 0)
 
 def handle_upload_master_flats(uploaded_master_flats_list, current_master_flat_paths_state):
     if not uploaded_master_flats_list: return "No Master FLATs provided.", current_master_flat_paths_state or {}, gr.Textbox(visible=False)
@@ -198,8 +201,9 @@ def handle_upload_master_flats(uploaded_master_flats_list, current_master_flat_p
     if not new_master_flat_paths and status_messages: final_status = "\\n".join(status_messages)
     elif not new_master_flat_paths and not status_messages: final_status = "No flat files processed."
     elif not status_messages and new_master_flat_paths: final_status = "All flats uploaded."
-    flat_paths_display_text = "Uploaded/Updated Master FLATs:\\n" + "\\n".join([f"{filt}: {p}" for filt, p in new_master_flat_paths.items()])
-    return final_status, new_master_flat_paths, gr.Textbox(value=flat_paths_display_text, label="Uploaded Master FLAT Paths", visible=True, interactive=False)
+    # flat_paths_display_text = "Uploaded/Updated Master FLATs:\\n" + "\\n".join([f"{filt}: {p}" for filt, p in new_master_flat_paths.items()])
+    flat_file_paths_list = list(new_master_flat_paths.values()) if new_master_flat_paths else []
+    return final_status, new_master_flat_paths, gr.Files(value=flat_file_paths_list, visible=len(flat_file_paths_list) > 0)
 
 # --- Helper function for PNG preview generation ---
 def create_png_preview(fits_data, output_png_path, stretch_mode='zscale', percentile=99.5, min_val=None, max_val=None):
@@ -607,9 +611,9 @@ def handle_tab4_photometry(
     tab4_roi_str,
     tab4_fwhm_input_val, tab4_aperture_radius_input_val,
     tab4_sky_inner_input_val, tab4_sky_outer_input_val,
-    tab4_k_value_str,
+    tab4_k_b_value_str, tab4_k_v_value_str, # Updated k-value parameters
     master_bias_path_state, master_dark_paths_state, master_flat_paths_state
-): # Removed request: gr.Request
+):
     status_messages = [
         "Starting Tab 4 Photometry Analysis...",
         f"Settings: FWHM={tab4_fwhm_input_val}px, Aperture Radius={tab4_aperture_radius_input_val}px",
@@ -752,11 +756,12 @@ def handle_tab4_photometry(
                 srcs_s_tbl.sort('flux',reverse=True); std_x,std_y=srcs_s_tbl[0]['xcentroid'],srcs_s_tbl[0]['ycentroid']
                 std_phot_res_list=perform_photometry(corr_std_d,[(std_x,std_y)], tab4_aperture_radius_input_val, tab4_sky_inner_input_val, tab4_sky_outer_input_val)
                 if not std_phot_res_list or 'instrumental_mag' not in std_phot_res_list[0] or std_phot_res_list[0]['instrumental_mag'] is None: raise ValueError("Photometry failed for std star.")
-                instr_mag_s=std_phot_res_list[0]['instrumental_mag']; k_val=float(tab4_k_value_str.strip()) if tab4_k_value_str.strip() else 0.15
+                instr_mag_s=std_phot_res_list[0]['instrumental_mag']
+                # k_val is no longer a single value, use k_b_val or k_v_val
                 std_airmass=float(std_hdr_raw.get('AIRMASS',1.0))
-                if std_filt_key.startswith('B'): m0_B=std_b_known-instr_mag_s+(k_val*std_airmass); status_messages.append(f"Calib m0_B={m0_B:.3f}")
-                elif std_filt_key.startswith('V'): m0_V=std_v_known-instr_mag_s+(k_val*std_airmass); status_messages.append(f"Calib m0_V={m0_V:.3f}")
-                else: status_messages.append(f"Warn: Std star filt '{std_filt_key}' not B/V.")
+                if std_filt_key.startswith('B'): m0_B=std_b_known-instr_mag_s+(k_b_val*std_airmass); status_messages.append(f"Calib m0_B={m0_B:.3f} using k(B)={k_b_val:.2f}")
+                elif std_filt_key.startswith('V'): m0_V=std_v_known-instr_mag_s+(k_v_val*std_airmass); status_messages.append(f"Calib m0_V={m0_V:.3f} using k(V)={k_v_val:.2f}")
+                else: status_messages.append(f"Warn: Std star filt '{std_filt_key}' not B/V. Using default m0 for this band if applicable, or specific k if defined for it.")
                 # _try_remove(corr_std_p) # Let temp_dir_obj handle cleanup
             except Exception as e_std: status_messages.append(f"Std star error: {e_std}. Using default m0s.")
 
@@ -791,10 +796,21 @@ def handle_tab4_photometry(
             coords_v=np.array([(s['xcentroid'],s['ycentroid']) for s in srcs_v_tbl])
             phot_v=perform_photometry(corrected_v_data,coords_v,tab4_aperture_radius_input_val, tab4_sky_inner_input_val, tab4_sky_outer_input_val)
 
-        k_val=float(tab4_k_value_str.strip()) if tab4_k_value_str.strip() else 0.15
+        try:
+            k_b_val = float(tab4_k_b_value_str.strip()) if tab4_k_b_value_str.strip() else 0.22
+        except ValueError:
+            status_messages.append(f"Warning: Invalid k(B) value '{tab4_k_b_value_str}'. Using default 0.22.")
+            k_b_val = 0.22
+        try:
+            k_v_val = float(tab4_k_v_value_str.strip()) if tab4_k_v_value_str.strip() else 0.12
+        except ValueError:
+            status_messages.append(f"Warning: Invalid k(V) value '{tab4_k_v_value_str}'. Using default 0.12.")
+            k_v_val = 0.12
+        status_messages.append(f"Using k(B)={k_b_val:.2f}, k(V)={k_v_val:.2f}")
+
         air_b=float(b_header.get('AIRMASS',1.0)); air_v=float(v_header.get('AIRMASS',1.0))
         for r_d in phot_b:
-            if r_d.get('instrumental_mag') is not None: r_d['StdMag_B']=r_d['instrumental_mag']+m0_B-(k_val*air_b)
+            if r_d.get('instrumental_mag') is not None: r_d['StdMag_B']=r_d['instrumental_mag']+m0_B-(k_b_val*air_b) # Use k_b_val
             if b_header:
                 try:
                     w=WCS(b_header)
@@ -804,7 +820,7 @@ def handle_tab4_photometry(
                 except Exception as e_wcs_b:
                     status_messages.append(f"Warning: WCS conversion failed for a B-frame source: {e_wcs_b}")
         for r_d in phot_v:
-            if r_d.get('instrumental_mag') is not None: r_d['StdMag_V']=r_d['instrumental_mag']+m0_V-(k_val*air_v)
+            if r_d.get('instrumental_mag') is not None: r_d['StdMag_V']=r_d['instrumental_mag']+m0_V-(k_v_val*air_v) # Use k_v_val
             if v_header:
                 try:
                     w=WCS(v_header)
@@ -930,8 +946,8 @@ with gr.Blocks() as astro_app:
             tab1_status_display = gr.Textbox(label="Status", interactive=False, lines=5, elem_id="tab1_status_disp")
             with gr.Row():
                 download_master_bias = gr.File(label="Download Master BIAS", interactive=False, visible=False, elem_id="tab1_dl_mbias")
-                download_master_darks_display = gr.Textbox(label="Generated Master DARK Paths", interactive=False, visible=False, lines=3, elem_id="tab1_dl_mdarks_txt")
-                download_master_flats_display = gr.Textbox(label="Generated Prelim. Master FLAT Paths", interactive=False, visible=False, lines=3, elem_id="tab1_dl_mflats_txt")
+                download_master_darks_display = gr.Files(label="Download Generated/Uploaded Master DARKs", interactive=False, visible=False, elem_id="tab1_dl_mdarks_files")
+                download_master_flats_display = gr.Files(label="Download Generated/Uploaded Prelim. Master FLATs", interactive=False, visible=False, elem_id="tab1_dl_mflats_files")
 
             generate_master_bias_button.click(fn=handle_generate_master_bias, inputs=[bias_uploads, master_bias_path_state], outputs=[tab1_status_display, master_bias_path_state, download_master_bias])
             generate_master_dark_button.click(fn=handle_generate_master_dark, inputs=[dark_uploads, master_bias_path_state, master_dark_paths_state], outputs=[tab1_status_display, master_dark_paths_state, download_master_darks_display])
@@ -1010,8 +1026,9 @@ with gr.Blocks() as astro_app:
                     tab4_aperture_radius_input = gr.Number(label="Aperture Radius (pixels)", value=5.0, minimum=1.0, step=0.1, elem_id="tab4_ap_radius")
                     tab4_sky_inner_input = gr.Number(label="Sky Annulus Inner Radius (pixels)", value=8.0, minimum=1.0, step=0.1, elem_id="tab4_sky_inner")
                     tab4_sky_outer_input = gr.Number(label="Sky Annulus Outer Radius (pixels)", value=12.0, minimum=1.0, step=0.1, elem_id="tab4_sky_outer")
-                    gr.Markdown("### Atmospheric Extinction")
-                    tab4_k_value_input = gr.Textbox(label="Extinction Coefficient (k)", value="0.15", elem_id="tab4_k_val")
+                    gr.Markdown("### Atmospheric Extinction Coefficients")
+                    tab4_k_b_input = gr.Textbox(label="Extinction Coefficient k(B)", value="0.22", elem_id="tab4_k_b_val", info="Atmospheric extinction k-value for B-filter observations.")
+                    tab4_k_v_input = gr.Textbox(label="Extinction Coefficient k(V)", value="0.12", elem_id="tab4_k_v_val", info="Atmospheric extinction k-value for V-filter observations.")
                 with gr.Column(scale=1):
                     gr.Markdown("### Optional: Standard Star Information")
                     tab4_std_star_fits_upload = gr.File(label="Upload Standard Star FITS File (optional)", file_types=['.fits', '.fit'], type="filepath", elem_id="tab4_std_fits")
@@ -1036,7 +1053,7 @@ with gr.Blocks() as astro_app:
                     tab4_roi_input,
                     tab4_fwhm_input, tab4_aperture_radius_input,
                     tab4_sky_inner_input, tab4_sky_outer_input,
-                    tab4_k_value_input,
+                    tab4_k_b_input, tab4_k_v_input, # Pass new k-value inputs
                     master_bias_path_state, master_dark_paths_state, master_flat_paths_state
                 ],
                 outputs=[tab4_status_display, tab4_results_table, tab4_preview_image, tab4_csv_download]
