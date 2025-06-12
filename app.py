@@ -990,7 +990,7 @@ with gr.Blocks() as astro_app:
             tab3_status_display = gr.Textbox(label="Processing Status / Errors", interactive=False, lines=8, elem_id="tab3_status_disp_extinction")
             gr.Markdown("### Results Plot & Data Table")
             with gr.Row():
-                tab3_plot_display = gr.Plot(label="Airmass vs. Magnitude Plot", visible=True, elem_id="tab3_extinction_plot") # Set visible=True or handle via output
+                tab3_plot_display = gr.Image(label="Airmass vs. Magnitude Plot", type="filepath", visible=True, elem_id="tab3_extinction_plot_img")
             with gr.Row():
                 tab3_results_table = gr.DataFrame(label="Photometry & Airmass Data", visible=True, headers=["Filename", "Airmass", "Instrumental_Magnitude", "Raw_Flux", "Net_Flux", "X_cen", "Y_cen", "Skipped_Reason"], wrap=True, elem_id="tab3_extinction_table")
 
