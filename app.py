@@ -611,7 +611,7 @@ def handle_tab4_photometry(
     tab4_roi_str,
     tab4_fwhm_input_val, tab4_aperture_radius_input_val,
     tab4_sky_inner_input_val, tab4_sky_outer_input_val,
-    tab4_k_b_value_str, tab4_k_v_value_str, # Updated k-value parameters
+    tab4_k_b_value_str, tab4_k_v_value_str,
     master_bias_path_state, master_dark_paths_state, master_flat_paths_state
 ):
     status_messages = [
@@ -757,12 +757,23 @@ def handle_tab4_photometry(
                 std_phot_res_list=perform_photometry(corr_std_d,[(std_x,std_y)], tab4_aperture_radius_input_val, tab4_sky_inner_input_val, tab4_sky_outer_input_val)
                 if not std_phot_res_list or 'instrumental_mag' not in std_phot_res_list[0] or std_phot_res_list[0]['instrumental_mag'] is None: raise ValueError("Photometry failed for std star.")
                 instr_mag_s=std_phot_res_list[0]['instrumental_mag']
-                # k_val is no longer a single value, use k_b_val or k_v_val
                 std_airmass=float(std_hdr_raw.get('AIRMASS',1.0))
-                if std_filt_key.startswith('B'): m0_B=std_b_known-instr_mag_s+(k_b_val*std_airmass); status_messages.append(f"Calib m0_B={m0_B:.3f} using k(B)={k_b_val:.2f}")
-                elif std_filt_key.startswith('V'): m0_V=std_v_known-instr_mag_s+(k_v_val*std_airmass); status_messages.append(f"Calib m0_V={m0_V:.3f} using k(V)={k_v_val:.2f}")
-                else: status_messages.append(f"Warn: Std star filt '{std_filt_key}' not B/V. Using default m0 for this band if applicable, or specific k if defined for it.")
-                # _try_remove(corr_std_p) # Let temp_dir_obj handle cleanup
+                # Correctly parse k_b_val and k_v_val here before they are used for standard star
+                try:
+                    k_b_val_parsed = float(tab4_k_b_value_str.strip()) if tab4_k_b_value_str.strip() else 0.22
+                except ValueError:
+                    status_messages.append(f"Warning: Invalid k(B) value '{tab4_k_b_value_str}' for std star. Using default 0.22.")
+                    k_b_val_parsed = 0.22
+                try:
+                    k_v_val_parsed = float(tab4_k_v_value_str.strip()) if tab4_k_v_value_str.strip() else 0.12
+                except ValueError:
+                    status_messages.append(f"Warning: Invalid k(V) value '{tab4_k_v_value_str}' for std star. Using default 0.12.")
+                    k_v_val_parsed = 0.12
+
+                if std_filt_key.startswith('B'): m0_B=std_b_known-instr_mag_s+(k_b_val_parsed*std_airmass); status_messages.append(f"Calib m0_B={m0_B:.3f} using k(B)={k_b_val_parsed:.2f}")
+                elif std_filt_key.startswith('V'): m0_V=std_v_known-instr_mag_s+(k_v_val_parsed*std_airmass); status_messages.append(f"Calib m0_V={m0_V:.3f} using k(V)={k_v_val_parsed:.2f}")
+                else: status_messages.append(f"Warn: Std star filt '{std_filt_key}' not B/V.")
+                # _try_remove(corr_std_p)
             except Exception as e_std: status_messages.append(f"Std star error: {e_std}. Using default m0s.")
 
         srcs_b_tbl=None;
@@ -838,9 +849,21 @@ def handle_tab4_photometry(
             idx,d2d,_=sky_b.match_to_catalog_sky(sky_v); p_scale=abs(b_header.get('CDELT1',b_header.get('CD1_1',0.5))*3600); tol=match_r_px*p_scale*u.arcsec; v_matched_indices=set()
             for i,s_b in enumerate(phot_b):
                 e={'ID':i+1,'X_B':s_b.get('x'),'Y_B':s_b.get('y'),'RA_deg':s_b.get('ra_deg'),'Dec_deg':s_b.get('dec_deg'),'InstrMag_B':s_b.get('instrumental_mag'),'StdMag_B':s_b.get('StdMag_B'),'InstrMag_V':None,'StdMag_V':None,'B-V':None,'X_V':None,'Y_V':None}
-                if idx[i] < len(phot_v) and d2d[i]<=tol : # Check idx bounds
-                    m_v_idx=idx[i];
-                    if m_v_idx not in v_matched_indices: s_v=phot_v[m_v_idx];e.update({'InstrMag_V':s_v.get('instrumental_mag'),'StdMag_V':s_v.get('StdMag_V'),'X_V':s_v.get('x'),'Y_V':s_v.get('y')});v_matched_indices.add(m_v_idx)
+
+                # Ensure m_v_idx is a scalar integer
+                current_match_idx = idx[i]
+                try:
+                    # Attempt to convert to int, this handles cases where idx[i] might be a numpy int type
+                    m_v_idx = int(current_match_idx)
+                except TypeError:
+                    status_messages.append(f"Warning: Could not convert match index {current_match_idx} to int for source B-ID {s_b.get('id', i+1)}. Skipping this potential V-match.") # Use B-frame source ID for logging
+                    m_v_idx = -1 # Invalid index to skip match
+
+                if m_v_idx >= 0 and m_v_idx < len(phot_v) and d2d[i] <= tol:
+                    if m_v_idx not in v_matched_indices:
+                        s_v = phot_v[m_v_idx]
+                        e.update({'InstrMag_V':s_v.get('instrumental_mag'),'StdMag_V':s_v.get('StdMag_V'),'X_V':s_v.get('x'),'Y_V':s_v.get('y')})
+                        v_matched_indices.add(m_v_idx)
                 if e['StdMag_B'] is not None and e['StdMag_V'] is not None: e['B-V']=e['StdMag_B']-e['StdMag_V']
                 if e['InstrMag_V'] is not None: matched_prev.append({'x':s_b['x'],'y':s_b['y'],'id':e['ID']})
                 results.append(e)
