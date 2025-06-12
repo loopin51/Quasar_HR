@@ -218,7 +218,7 @@ def create_png_preview(fits_data, output_png_path, stretch_mode='zscale', percen
     else: norm = ImageNormalize(fits_data, interval=ZScaleInterval())
     plt.imshow(fits_data, cmap='grey', origin='lower', norm=norm)
     plt.colorbar(fraction=0.046, pad=0.04); plt.xlabel("X Pixel"); plt.ylabel("Y Pixel"); plt.title("Calibrated Image Preview"); plt.tight_layout()
-    try: plt.savefig(output_png_path, dpi=100); plt.close(); return output_png_path
+    try: plt.savefig(output_png_path, dpi=400); plt.close(); return output_png_path
     except Exception as e: print(f"Error saving PNG preview: {e}"); plt.close(); return None
 
 # --- Handler for Tab 2: LIGHT Frame Correction ---
